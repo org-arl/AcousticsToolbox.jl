@@ -3,7 +3,7 @@ export Bellhop
 const BELLHOP = Ref{Cmd}(AcousticsToolbox_jll.bellhop())
 
 """
-A propagation model based on the FORTRAN Bellhop model.
+A propagation model based on the FORTRAN OALIB Bellhop model.
 """
 struct Bellhop{T} <: PropagationModel{T}
   env::T
