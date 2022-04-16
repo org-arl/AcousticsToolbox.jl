@@ -1,10 +1,10 @@
-# AcousticsToolbox
-
 [![CI](https://github.com/org-arl/AcousticsToolbox.jl/workflows/CI/badge.svg)](https://github.com/org-arl/AcousticsToolbox.jl/actions)
 [![Codecov](https://codecov.io/gh/org-arl/AcousticsToolbox.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/org-arl/AcousticsToolbox.jl)
 
+# AcousticsToolbox
+
 This package provides a Julia wrapper to the [OALIB](http://oalib.hlsresearch.com/AcousticsToolbox/) acoustic propagation modeling toolbox,
-making it compatible with [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl).
+making it available for use with [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl).
 
 Currently, only two of the OALIB models are supported:
 
@@ -15,7 +15,7 @@ Currently, only two of the OALIB models are supported:
 
 ## Installation
 
-```julia-repl
+```julia
 julia> # press ]
 pkg> add UnderwaterAcoustics
 pkg> add AcousticsToolbox
@@ -64,7 +64,7 @@ x = transmissionloss(pm, tx, rx)
 plot(env; receivers=rx, transmissionloss=x)
 ```
 
-![](images/txloss2.png)
+![](https://raw.githubusercontent.com/org-arl/UnderwaterAcoustics.jl/main/docs/images/txloss2.png)
 
 For more information on how to use the propagation models, see [Propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html).
 
@@ -74,9 +74,9 @@ Additional options available with `Kraken`:
 
 - `nmodes` -- maximum number of modes (default: 9999)
 - `nmedia` -- number of medium (default: 1)
-- `nmesh` -- number of mesh point to use initially, set to 0 to allow code calculate `nmesh` automatically.(default: 0)
-- `clow` -- lower phase speed limit, set to 0 to allow code calculate `clow` automatically. (default: `0.0 m/s`)
-- `chigh` -- higher phase speed limit, the larger `chigh` is, the more modes are calculated. Choice of `chigh` becomes a matter of experience. (default: `1600.0 m/s`)
+- `nmesh` -- number of mesh point to use initially (0=auto, default: 0)
+- `clow` -- lower phase speed limit in m/s (0=auto, default: 0)
+- `chigh` -- higher phase speed limit in m/s (larger values => more modes, default: 1600)
 - `debug` -- if `true`, intermediate Kraken files are made available for user inspection (default: `false`)
 
 **Example:**
@@ -100,6 +100,6 @@ x = transmissionloss(pm, tx, rx)
 plot(env; receivers=rx, transmissionloss=x, clims = (-60.0,0.0))
 ```
 
-![](images/txloss3.png)
+![](https://raw.githubusercontent.com/org-arl/UnderwaterAcoustics.jl/main/docs/images/txloss3.png)
 
 For more information on how to use the propagation models, see [Propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html).

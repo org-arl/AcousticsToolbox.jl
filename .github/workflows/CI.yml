@@ -19,8 +19,6 @@ jobs:
       matrix:
         version:
           - '1.6'
-          - '1.8'
-          - 'nightly'
         os:
           - ubuntu-latest
         arch:
@@ -38,22 +36,3 @@ jobs:
       - uses: codecov/codecov-action@v2
         with:
           files: lcov.info
-  docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@v1
-        with:
-          version: '1'
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-docdeploy@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
-      - run: |
-          julia --project=docs -e '
-            using Documenter: DocMeta, doctest
-            using AcousticsToolbox
-            DocMeta.setdocmeta!(AcousticsToolbox, :DocTestSetup, :(using AcousticsToolbox); recursive=true)
-            doctest(AcousticsToolbox)'
