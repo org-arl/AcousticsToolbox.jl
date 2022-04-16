@@ -64,7 +64,7 @@ x = transmissionloss(pm, tx, rx)
 plot(env; receivers=rx, transmissionloss=x)
 ```
 
-![](https://raw.githubusercontent.com/org-arl/UnderwaterAcoustics.jl/main/docs/images/txloss2.png)
+![](https://raw.githubusercontent.com/org-arl/AcousticsToolbox.jl/main/docs/images/txloss2.png)
 
 For more information on how to use the propagation models, see [Propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html).
 
@@ -100,6 +100,6 @@ x = transmissionloss(pm, tx, rx)
 plot(env; receivers=rx, transmissionloss=x, clims = (-60.0,0.0))
 ```
 
-![](https://raw.githubusercontent.com/org-arl/UnderwaterAcoustics.jl/main/docs/images/txloss3.png)
+![](https://raw.githubusercontent.com/org-arl/AcousticsToolbox.jl/main/docs/images/txloss3.png)
 
 For more information on how to use the propagation models, see [Propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html).
