@@ -9,7 +9,6 @@ using Printf
 include("Bellhop.jl")
 
 function __init__()
-  @info "INIT"
   UnderwaterAcoustics.addmodel!(Bellhop)
 end
 
