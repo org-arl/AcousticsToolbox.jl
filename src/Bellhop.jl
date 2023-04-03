@@ -333,9 +333,9 @@ function readarrivals(filename)
           for n ∈ 1:count
             v = split(strip(readline(io)) ,r" +")
             length(v) == 8 || error("Wrong number of data entries in arrivals")
-            A, ph, t, _, aod, aoa = parse.(Float64, v[1:6])
+            A, ph, tr, ti, aod, aoa = parse.(Float64, v[1:6])
             sb, bb = parse.(Int, v[7:8])
-            push!(arrivals, RayArrival(t, A * cis(deg2rad(ph)), sb, bb, -deg2rad(aod), deg2rad(aoa)))
+            push!(arrivals, RayArrival(tr, A * cis(deg2rad(ph) - 2π * f * complex(0, ti)), sb, bb, -deg2rad(aod), deg2rad(aoa)))
           end
         end
       end
