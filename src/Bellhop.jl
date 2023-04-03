@@ -216,8 +216,8 @@ function writeenv(model::Bellhop, tx::Vector{<:AcousticSource}, rx::AbstractArra
     println(io, "' 0.0") # bottom roughness = 0
     bed = seabed(env)
     c2 = soundspeed(ss, 0.0, 0.0, -waterdepth) * bed.cᵣ
-    α = bed.δ * 40π / log(10)      # based on APL-UW TR 9407 (1994), IV-9 equation (4)
-    @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, c2, bed.ρᵣ, α)
+    ρ = waterdensity(env) * bed.ρᵣ
+    @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, c2, ρ/1000, indBperλ(bed.δ))
     printarray(io, [-location(tx1)[3] for tx1 ∈ tx])
     if length(rx) == 1
       printarray(io, [-location(rx[1])[3]])
