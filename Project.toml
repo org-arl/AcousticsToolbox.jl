@@ -1,7 +1,7 @@
 name = "AcousticsToolbox"
 uuid = "268a15bc-5756-47d6-9bea-fa5dc21c97f8"
 authors = ["Mandar Chitre <mandar@nus.edu.sg>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 AcousticsToolbox_jll = "6380ca6f-c335-511c-b45e-8a1ed8902ca7"
@@ -9,7 +9,7 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 UnderwaterAcoustics = "0efb1f7a-1ce7-46d2-9f48-546a4c8fbb99"
 
 [compat]
-UnderwaterAcoustics = "0.2"
+UnderwaterAcoustics = "0.3"
 julia = "1.6"
 
 [extras]
