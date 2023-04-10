@@ -1,5 +1,6 @@
 [![CI](https://github.com/org-arl/AcousticsToolbox.jl/workflows/CI/badge.svg)](https://github.com/org-arl/AcousticsToolbox.jl/actions)
 [![Codecov](https://codecov.io/gh/org-arl/AcousticsToolbox.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/org-arl/AcousticsToolbox.jl)
+[![ColPrac](https://img.shields.io/badge/ColPrac-contributing-blueviolet)](https://github.com/org-arl/UnderwaterAcoustics.jl/blob/master/CONTRIBUTING.md)
 
 # AcousticsToolbox
 
@@ -103,3 +104,11 @@ plot(env; receivers=rx, transmissionloss=x, clims = (-60.0,0.0))
 ![](https://raw.githubusercontent.com/org-arl/AcousticsToolbox.jl/main/docs/images/txloss3.png)
 
 For more information on how to use the propagation models, see [Propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html).
+
+## Contributing
+
+Contributions in the form of bug reports, feature requests, ideas/suggestions, bug fixes, code enhancements, and documentation updates are most welcome. Please read [contribution guidelines](https://github.com/org-arl/UnderwaterAcoustics.jl/blob/master/CONTRIBUTING.md) if you wish to start contributing.
+
+The scopes active in this repository are:
+- **bellhop**: Bellhop
+- **kraken**: Kraken
