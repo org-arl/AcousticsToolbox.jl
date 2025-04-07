@@ -5,7 +5,7 @@ const BELLHOP = Ref{Cmd}(AcousticsToolbox_jll.bellhop())
 """
 A propagation model based on the FORTRAN OALIB Bellhop model.
 """
-struct Bellhop{T} <: PropagationModel{T}
+struct Bellhop{T} <: AbstractRayPropagationModel
   env::T
   nbeams::Int
   minangle::Float32
@@ -13,11 +13,12 @@ struct Bellhop{T} <: PropagationModel{T}
   gaussian::Bool
   debug::Bool
   function Bellhop(env, nbeams, minangle, maxangle, gaussian, debug)
+    checkenv(env)
     nbeams < 0 && (nbeams = 0)
     -π/2 ≤ minangle ≤ π/2 || throw(ArgumentError("minangle should be between -π/2 and π/2"))
     -π/2 ≤ maxangle ≤ π/2 || throw(ArgumentError("maxangle should be between -π/2 and π/2"))
     minangle < maxangle || throw(ArgumentError("maxangle should be more than minangle"))
-    new{typeof(env)}(check(Bellhop, env), nbeams, Float32(minangle), Float32(maxangle), gaussian, debug)
+    new{typeof(env)}(env, nbeams, Float32(minangle), Float32(maxangle), gaussian, debug)
   end
 end
 
@@ -27,35 +28,32 @@ end
 
 Create a Bellhop propagation model.
 """
-Bellhop(env; gaussian=false, debug=false) = Bellhop(env, 0, -80°, 80°, gaussian, debug)
+Bellhop(env; gaussian=false, debug=false) = Bellhop(env, 0, -deg2rad(80), deg2rad(80), gaussian, debug)
 
 ### interface functions
 
-function UnderwaterAcoustics.check(::Type{Bellhop}, env::Union{<:UnderwaterEnvironment,Missing})
-  if env === missing
-    mktempdir(prefix="bellhop_") do dirname
-      try
-        bellhop(dirname, false)
-      catch e
-        e isa BellhopError && e.details == ["Unable to execute bellhop.exe"] && throw(e)
+function UnderwaterAcoustics.arrivals(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; paths=true)
+  mktempdir(prefix="bellhop_") do dirname
+    writeenv(pm, [tx1], [rx1], "A", dirname)
+    bellhop(dirname, pm.debug)
+    arr = readarrivals(joinpath(dirname, "model.arr"))
+    if paths
+      writeenv(pm, [tx1], [rx1], "E", dirname)
+      bellhop(dirname, pm.debug)
+      arr2 = readrays(joinpath(dirname, "model.ray"))
+      for i ∈ eachindex(arr)
+        ndx = findall(a -> a.ns == arr[i].ns && a.nb == arr[i].nb, arr2)
+        if !isempty(ndx)
+          ndx = argmin(j -> abs(arr2[j].θₛ - arr[i].θₛ), ndx)
+          arr[i] = eltype(arr)(arr[i].t, arr[i].ϕ, arr[i].ns, arr[i].nb, arr[i].θₛ, arr[i].θᵣ, arr2[ndx].path)
+        end
       end
     end
-  else
-    seabed(env) isa RayleighReflectionCoef || throw(ArgumentError("Seabed type not supported"))
-    seasurface(env) === Vacuum || throw(ArgumentError("Only vacuum seasurface supported"))
-  end
-  env
-end
-
-function UnderwaterAcoustics.arrivals(model::Bellhop, tx1::AcousticSource, rx1::AcousticReceiver)
-  mktempdir(prefix="bellhop_") do dirname
-    writeenv(model, [tx1], [rx1], "A", dirname)
-    bellhop(dirname, model.debug)
-    readarrivals(joinpath(dirname, "model.arr"))
+    arr
   end
 end
 
-function UnderwaterAcoustics.transfercoef(model::Bellhop, tx1::AcousticSource, rx::AcousticReceiverGrid2D; mode=:coherent)
+function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSource, rx::AcousticReceiverGrid2D; mode=:coherent)
   if mode === :coherent
     taskcode = "C"
   elseif mode === :incoherent
@@ -66,13 +64,13 @@ function UnderwaterAcoustics.transfercoef(model::Bellhop, tx1::AcousticSource, r
     throw(ArgumentError("Unknown mode :" * string(mode)))
   end
   mktempdir(prefix="bellhop_") do dirname
-    xrev, zrev = writeenv(model, [tx1], rx, taskcode, dirname)
-    bellhop(dirname, model.debug)
+    xrev, zrev = writeenv(pm, [tx1], rx, taskcode, dirname)
+    bellhop(dirname, pm.debug)
     readshd(joinpath(dirname, "model.shd"); xrev=xrev, zrev=zrev)
   end
 end
 
-function UnderwaterAcoustics.transfercoef(model::Bellhop, tx1::AcousticSource, rx1::AcousticReceiver; mode=:coherent)
+function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; mode=:coherent)
   if mode === :coherent
     taskcode = "C"
   elseif mode === :incoherent
@@ -83,31 +81,11 @@ function UnderwaterAcoustics.transfercoef(model::Bellhop, tx1::AcousticSource, r
     throw(ArgumentError("Unknown mode :" * string(mode)))
   end
   mktempdir(prefix="bellhop_") do dirname
-    writeenv(model, [tx1], [rx1], taskcode, dirname)
-    bellhop(dirname, model.debug)
+    writeenv(pm, [tx1], [rx1], taskcode, dirname)
+    bellhop(dirname, pm.debug)
     readshd(joinpath(dirname, "model.shd"))[1]
   end
 end
-
-function UnderwaterAcoustics.eigenrays(model::Bellhop, tx1::AcousticSource, rx1::AcousticReceiver)
-  mktempdir(prefix="bellhop_") do dirname
-    writeenv(model, [tx1], [rx1], "E", dirname)
-    bellhop(dirname, model.debug)
-    readrays(joinpath(dirname, "model.ray"))
-  end
-end
-
-function UnderwaterAcoustics.rays(model::Bellhop, tx1::AcousticSource, θ::AbstractArray, rmax)
-  θ isa AbstractRange || length(θ) == 1 || throw(ArgumentError("Bellhop only supports uniformly spaced angles"))
-  all(-π/2 .< θ .< π/2) || throw(ArgumentError("θ must be between -π/2 and π/2"))
-  mktempdir(prefix="bellhop_") do dirname
-    writeenv(model, [tx1], [AcousticReceiver(rmax, 0.0)], "R", dirname; minangle=minimum(θ), maxangle=maximum(θ), nbeams=length(θ))
-    bellhop(dirname, model.debug)
-    readrays(joinpath(dirname, "model.ray"))
-  end
-end
-
-UnderwaterAcoustics.rays(model::Bellhop, tx1::AcousticSource, θ, rmax) = rays(model, tx1, [θ], rmax)[1]
 
 ### helper functions
 
@@ -158,85 +136,99 @@ function checkerr!(err, filename)
   end
 end
 
-function writeenv(model::Bellhop, tx::Vector{<:AcousticSource}, rx::AbstractArray{<:AcousticReceiver}, taskcode, dirname; minangle=model.minangle, maxangle=model.maxangle, nbeams=model.nbeams)
-  all(location(tx1)[1] == 0.0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop requires transmitters at (0, 0, z)"))
-  all(location(tx1)[2] == 0.0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop 2D requires transmitters in the x-z plane"))
-  all(location(rx1)[1] >= 0.0 for rx1 ∈ rx) || throw(ArgumentError("Bellhop requires receivers to be in the +x halfspace"))
-  all(location(rx1)[2] == 0.0 for rx1 ∈ rx) || throw(ArgumentError("Bellhop 2D requires receivers in the x-z plane"))
+function checkenv(env)
+  env.seabed isa FluidBoundary || throw(ArgumentError("seabed must be a FluidBoundary"))
+  env.surface === PressureReleaseBoundary || throw(ArgumentError("surface must be a PressureReleaseBoundary"))
+  is_range_dependent(env.soundspeed) && throw(ArgumentError("range-dependent soundspeed not supported"))
+  mktempdir(prefix="bellhop_") do dirname
+    try
+      bellhop(dirname, false)
+    catch e
+      e isa BellhopError && e.details == ["Unable to execute bellhop.exe"] && throw(e)
+    end
+  end
+  nothing
+end
+
+function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; minangle=pm.minangle, maxangle=pm.maxangle, nbeams=pm.nbeams)
+  all(location(tx1).x == 0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop requires transmitters at (0, 0, z)"))
+  all(location(tx1).y == 0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop 2D requires transmitters in the x-z plane"))
+  all(location(rx1).x >= 0 for rx1 ∈ rx) || throw(ArgumentError("Bellhop requires receivers to be in the +x halfspace"))
+  all(location(rx1).y == 0 for rx1 ∈ rx) || throw(ArgumentError("Bellhop 2D requires receivers in the x-z plane"))
   xrev = false
   zrev = false
-  env = model.env
+  env = pm.env
   name = split(basename(dirname), "_")[end]
   filename = joinpath(dirname, "model.env")
   open(filename, "w") do io
     println(io, "'", name, "'")
-    flist = [nominalfrequency(tx1) for tx1 ∈ tx]
+    flist = [frequency(tx1) for tx1 ∈ tx]
     f = sum(flist) / length(flist)
-    maximum(abs.(flist .- f))/f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
+    maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
     @printf(io, "%0.6f\n", f)
     println(io, "1")
     if length(rx) == 1
-      maxr = location(rx[1])[1]
+      maxr = location(only(rx)).x
     elseif rx isa AcousticReceiverGrid2D
       maxr = maximum(rx.xrange)
     else
       throw(ArgumentError("Receivers must be on a 2D grid"))
     end
-    ss = ssp(env)
+    ssp = env.soundspeed
     sspi = "S"
-    ss isa SampledSSP1D && ss.interp === :linear && (sspi = "C")
+    ssp isa SampledFieldZ && ssp.interp === :linear && (sspi = "C")
     print(io, "'", sspi, "VWT")
-    alt = altimetry(env)
-    if !(alt isa FlatSurface)
+    if is_range_dependent(env.altimetry)
       print(io, "*")
-      createadfile(joinpath(dirname, "model.ati"), alt, (p...) -> -altitude(p...), maxr, f)
+      createadfile(joinpath(dirname, "model.ati"), env.altimetry, (q, p) -> -value(q, p), maxr, f)
     end
     println(io, "'")
-    bathy = bathymetry(env)
-    waterdepth = maxdepth(bathy)
+    bathy = env.bathymetry
+    if is_constant(bathy)
+      waterdepth = value(bathy)
+    else
+      waterdepth = maximum(x -> value(bathy, (x, 0, 0)), range(0.0, maxr; length=recommendlength(maxr, f)))
+    end
     @printf(io, "1 0.0 %0.6f\n", waterdepth)
-    if ss isa IsoSSP
-      @printf(io, "0.0 %0.6f /\n", soundspeed(ss, 0.0, 0.0, 0.0), )
-      @printf(io, "%0.6f %0.6f /\n", waterdepth, soundspeed(ss, 0.0, 0.0, 0.0))
-    elseif ss isa SampledSSP1D
-      for i ∈ 1:length(ss.z)
-        @printf(io, "%0.6f %0.6f /\n", -ss.z[i], ss.c[i])
+    if is_constant(ssp)
+      @printf(io, "0.0 %0.6f /\n", value(ssp))
+      @printf(io, "%0.6f %0.6f /\n", waterdepth, value(ssp))
+    elseif ssp isa SampledFieldZ
+      for z ∈ ssp.zrange
+        @printf(io, "%0.6f %0.6f /\n", -z, ssp(z))
       end
     else
       for d ∈ range(0.0, waterdepth; length=recommendlength(waterdepth, f))
-        @printf(io, "%0.6f %0.6f /\n", d, soundspeed(ss, 0.0, 0.0, -d))
+        @printf(io, "%0.6f %0.6f /\n", d, ssp(-d))
       end
-      floor(waterdepth) != waterdepth && @printf(io, "%0.6f %0.6f /\n", waterdepth, soundspeed(ss, 0.0, 0.0, -waterdepth))
+      floor(waterdepth) != waterdepth && @printf(io, "%0.6f %0.6f /\n", waterdepth, ssp(-waterdepth))
     end
     print(io, "'A")
-    if !(bathy isa ConstantDepth)
+    if is_range_dependent(bathy)
       print(io, "*")
-      createadfile(joinpath(dirname, "model.bty"), bathy, depth, maxr, f)
+      createadfile(joinpath(dirname, "model.bty"), bathy, value, maxr, f)
     end
     println(io, "' 0.0") # bottom roughness = 0
-    bed = seabed(env)
-    c2 = soundspeed(ss, 0.0, 0.0, -waterdepth) * bed.cᵣ
-    ρ = waterdensity(env) * bed.ρᵣ
-    @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, c2, ρ/1000, indBperλ(bed.δ))
-    printarray(io, [-location(tx1)[3] for tx1 ∈ tx])
+    @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / 1000, in_dBperλ(env.seabed.δ))
+    printarray(io, [-location(tx1).z for tx1 ∈ tx])
     if length(rx) == 1
-      printarray(io, [-location(rx[1])[3]])
+      printarray(io, [-location(rx[1]).z])
       printarray(io, [maxr / 1000.0])
     elseif rx isa AcousticReceiverGrid2D
       d = reverse(-rx.zrange)
       if first(d) > last(d)
-       d = reverse(d)
-       zrev = true
+        d = reverse(d)
+        zrev = true
       end
       r = rx.xrange ./ 1000.0
       if first(r) > last(r)
-       r = reverse(r)
-       xrev = true
+        r = reverse(r)
+        xrev = true
       end
       printarray(io, d)
       printarray(io, r)
     end
-    println(io, "'", taskcode, model.gaussian ? "B'" : "'")
+    println(io, "'", taskcode, pm.gaussian ? "B'" : "'")
     @printf(io, "%d\n", nbeams)
     @printf(io, "%0.6f %0.6f /\n", rad2deg(minangle), rad2deg(maxangle))
     @printf(io, "0.0 %0.6f %0.6f\n", 1.01*waterdepth, 1.01 * maxr / 1000.0)
@@ -290,14 +282,14 @@ function readrays(filename)
         x, d = parse.(Float64, split(strip(readline(io)), r" +"))
         raypath[k] = (x, 0.0, -d)
       end
-      push!(rays, RayArrival(NaN64, NaN64, sb, bb, -deg2rad(aod), NaN64, raypath))
+      push!(rays, RayArrival(NaN64, complex(NaN64, NaN64), sb, bb, -deg2rad(aod), NaN64, raypath))
     end
   end
   rays
 end
 
 function readarrivals(filename)
-  arrivals = RayArrival{Float64,Missing}[]
+  arrivals = RayArrival{Float64,Float64,Float64,Float64,Union{Missing,Vector{NTuple{3,Float64}}}}[]
   open(filename, "r") do io
     s = strip(readline(io))
     if occursin("2D", s)
@@ -335,13 +327,13 @@ function readarrivals(filename)
             length(v) == 8 || error("Wrong number of data entries in arrivals")
             A, ph, tr, ti, aod, aoa = parse.(Float64, v[1:6])
             sb, bb = parse.(Int, v[7:8])
-            push!(arrivals, RayArrival(tr, A * cis(deg2rad(ph) - 2π * f * complex(0, ti)), sb, bb, -deg2rad(aod), deg2rad(aoa)))
+            push!(arrivals, eltype(arrivals)(tr, A * cis(deg2rad(ph) - 2π * f * complex(0, ti)), sb, bb, -deg2rad(aod), deg2rad(aoa), missing))
           end
         end
       end
     end
   end
-  sort(arrivals; by = a -> a.time)
+  sort(arrivals; by = a -> a.t)
 end
 
 function readshd(filename; xrev=false, zrev=false)
