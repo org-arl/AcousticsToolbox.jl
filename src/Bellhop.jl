@@ -164,7 +164,7 @@ end
 
 function checkenv(env)
   env.seabed isa FluidBoundary || throw(ArgumentError("seabed must be a FluidBoundary"))
-  env.surface === PressureReleaseBoundary || throw(ArgumentError("surface must be a PressureReleaseBoundary"))
+  env.surface isa FluidBoundary || throw(ArgumentError("surface must be a FluidBoundary"))
   is_range_dependent(env.soundspeed) && throw(ArgumentError("range-dependent soundspeed not supported"))
   mktempdir(prefix="bellhop_") do dirname
     try
@@ -203,7 +203,11 @@ function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle
     ssp = env.soundspeed
     sspi = "S"
     ssp isa SampledFieldZ && ssp.interp === :linear && (sspi = "C")
-    print(io, "'", sspi, "VWT")
+    surf = env.surface === RigidBoundary ? "R" : env.surface === PressureReleaseBoundary ? "V" : "A"
+    print(io, "'", sspi, surf, "WT")     # bottom attenuation in dB/wavelength, Thorpe volume attenuation
+    if surf == "A"
+      @printf(io, "0.0 %0.6f 0.0 %0.6f %0.6f /\n", env.surface.c, env.surface.ρ / env.density, in_dBperλ(env.surface.δ))
+    end
     if is_range_dependent(env.altimetry)
       print(io, "*")
       createadfile(joinpath(dirname, "model.ati"), env.altimetry, (q, p) -> -value(q, p), maxr, f)
