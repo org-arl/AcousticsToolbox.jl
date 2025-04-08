@@ -14,11 +14,10 @@ struct Bellhop{T} <: AbstractRayPropagationModel
   debug::Bool
   function Bellhop(env, nbeams, minangle, maxangle, gaussian, debug)
     checkenv(env)
-    nbeams < 0 && (nbeams = 0)
     -π/2 ≤ minangle ≤ π/2 || throw(ArgumentError("minangle should be between -π/2 and π/2"))
     -π/2 ≤ maxangle ≤ π/2 || throw(ArgumentError("maxangle should be between -π/2 and π/2"))
     minangle < maxangle || throw(ArgumentError("maxangle should be more than minangle"))
-    new{typeof(env)}(env, nbeams, Float32(minangle), Float32(maxangle), gaussian, debug)
+    new{typeof(env)}(env, max(nbeams, 0), Float32(minangle), Float32(maxangle), gaussian, debug)
   end
 end
 
@@ -30,15 +29,19 @@ Create a Bellhop propagation model.
 """
 Bellhop(env; gaussian=false, debug=false) = Bellhop(env, 0, -deg2rad(80), deg2rad(80), gaussian, debug)
 
+Base.show(io::IO, pm::Bellhop) = print(io, "Bellhop(⋯)")
+
 ### interface functions
 
 function UnderwaterAcoustics.arrivals(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; paths=true)
   mktempdir(prefix="bellhop_") do dirname
-    writeenv(pm, [tx1], [rx1], "A", dirname)
+    nbeams = pm.nbeams
+    nbeams == 0 && (nbeams = round(Int, (pm.maxangle - pm.minangle) / deg2rad(0.05)) + 1)
+    writeenv(pm, [tx1], [rx1], "A", dirname; nbeams)
     bellhop(dirname, pm.debug)
     arr = readarrivals(joinpath(dirname, "model.arr"))
     if paths
-      writeenv(pm, [tx1], [rx1], "E", dirname)
+      writeenv(pm, [tx1], [rx1], "E", dirname; nbeams)
       bellhop(dirname, pm.debug)
       arr2 = readrays(joinpath(dirname, "model.ray"))
       for i ∈ eachindex(arr)
@@ -327,6 +330,7 @@ function readarrivals(filename)
             length(v) == 8 || error("Wrong number of data entries in arrivals")
             A, ph, tr, ti, aod, aoa = parse.(Float64, v[1:6])
             sb, bb = parse.(Int, v[7:8])
+            (A == 0 || isnan(A)) && continue
             push!(arrivals, eltype(arrivals)(tr, A * cis(deg2rad(ph) - 2π * f * complex(0, ti)), sb, bb, -deg2rad(aod), deg2rad(aoa), missing))
           end
         end
