@@ -8,26 +8,35 @@ A propagation model based on the FORTRAN OALIB Bellhop model.
 struct Bellhop{T} <: AbstractRayPropagationModel
   env::T
   nbeams::Int
-  minangle::Float32
-  maxangle::Float32
+  min_angle::Float32
+  max_angle::Float32
   gaussian::Bool
   debug::Bool
-  function Bellhop(env, nbeams, minangle, maxangle, gaussian, debug)
+  function Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
     checkenv(env)
-    -π/2 ≤ minangle ≤ π/2 || throw(ArgumentError("minangle should be between -π/2 and π/2"))
-    -π/2 ≤ maxangle ≤ π/2 || throw(ArgumentError("maxangle should be between -π/2 and π/2"))
-    minangle < maxangle || throw(ArgumentError("maxangle should be more than minangle"))
-    new{typeof(env)}(env, max(nbeams, 0), Float32(minangle), Float32(maxangle), gaussian, debug)
+    -π/2 ≤ min_angle ≤ π/2 || throw(ArgumentError("min_angle should be between -π/2 and π/2"))
+    -π/2 ≤ max_angle ≤ π/2 || throw(ArgumentError("max_angle should be between -π/2 and π/2"))
+    min_angle < max_angle || throw(ArgumentError("max_angle should be more than min_angle"))
+    new{typeof(env)}(env, max(nbeams, 0), Float32(min_angle), Float32(max_angle), gaussian, debug)
   end
 end
 
 """
-    Bellhop(env; gaussian=false, debug=false)
-    Bellhop(env, nbeams, minangle, maxangle, gaussian, debug)
+    Bellhop(env; kwargs...)
 
 Create a Bellhop propagation model.
+
+Supported keyword arguments:
+- `nbeams`: number of beams to use (default: 0, auto)
+- `min_angle`: minimum beam angle (default: -80°)
+- `max_angle`: maximum beam angle (default: 80°)
+- `gaussian`: use Gaussian beam (default: false)
+- `debug`: debug mode (default: false)
+
+Enabling debug mode will create a temporary directory with the Bellhop input and output files.
+This allows manual inspection of the files.
 """
-Bellhop(env; gaussian=false, debug=false) = Bellhop(env, 0, -deg2rad(80), deg2rad(80), gaussian, debug)
+Bellhop(env; nbeams=0, min_angle=-deg2rad(80), max_angle=deg2rad(80), gaussian=false, debug=false) = Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
 
 Base.show(io::IO, pm::Bellhop) = print(io, "Bellhop(⋯)")
 
@@ -36,7 +45,7 @@ Base.show(io::IO, pm::Bellhop) = print(io, "Bellhop(⋯)")
 function UnderwaterAcoustics.arrivals(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; paths=true)
   mktempdir(prefix="bellhop_") do dirname
     nbeams = pm.nbeams
-    nbeams == 0 && (nbeams = round(Int, (pm.maxangle - pm.minangle) / deg2rad(0.05)) + 1)
+    nbeams == 0 && (nbeams = round(Int, (pm.max_angle - pm.min_angle) / deg2rad(0.05)) + 1)
     writeenv(pm, [tx1], [rx1], "A", dirname; nbeams)
     bellhop(dirname, pm.debug)
     arr = readarrivals(joinpath(dirname, "model.arr"))
@@ -87,6 +96,20 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
     writeenv(pm, [tx1], [rx1], taskcode, dirname)
     bellhop(dirname, pm.debug)
     readshd(joinpath(dirname, "model.shd"))[1]
+  end
+end
+
+"""
+    rays(pm::Bellhop, tx, max_range)
+    rays(pm::Bellhop, tx, max_range, nbeams)
+
+Compute ray trace for a single transmitter.
+"""
+function rays(pm::Bellhop, tx1::AbstractAcousticSource, max_range::Real, nbeams::Int=pm.nbeams)
+  mktempdir(prefix="bellhop_") do dirname
+    writeenv(pm, [tx1], [AcousticReceiver(max_range, 0)], "R", dirname; nbeams)
+    bellhop(dirname, pm.debug)
+    readrays(joinpath(dirname, "model.ray"))
   end
 end
 
@@ -153,7 +176,7 @@ function checkenv(env)
   nothing
 end
 
-function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; minangle=pm.minangle, maxangle=pm.maxangle, nbeams=pm.nbeams)
+function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle, max_angle=pm.max_angle, nbeams=pm.nbeams)
   all(location(tx1).x == 0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop requires transmitters at (0, 0, z)"))
   all(location(tx1).y == 0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop 2D requires transmitters in the x-z plane"))
   all(location(rx1).x >= 0 for rx1 ∈ rx) || throw(ArgumentError("Bellhop requires receivers to be in the +x halfspace"))
@@ -206,13 +229,15 @@ function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; minangle=pm.minangle, 
       end
       floor(waterdepth) != waterdepth && @printf(io, "%0.6f %0.6f /\n", waterdepth, ssp(-waterdepth))
     end
-    print(io, "'A")
+    print(io, env.seabed === RigidBoundary ? "'R" : env.seabed === PressureReleaseBoundary ? "'V" : "'A")
     if is_range_dependent(bathy)
       print(io, "*")
       createadfile(joinpath(dirname, "model.bty"), bathy, value, maxr, f)
     end
     println(io, "' 0.0") # bottom roughness = 0
-    @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / 1000, in_dBperλ(env.seabed.δ))
+    if env.seabed !== RigidBoundary && env.seabed !== PressureReleaseBoundary
+      @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δ))
+    end
     printarray(io, [-location(tx1).z for tx1 ∈ tx])
     if length(rx) == 1
       printarray(io, [-location(rx[1]).z])
@@ -233,7 +258,7 @@ function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; minangle=pm.minangle, 
     end
     println(io, "'", taskcode, pm.gaussian ? "B'" : "'")
     @printf(io, "%d\n", nbeams)
-    @printf(io, "%0.6f %0.6f /\n", rad2deg(minangle), rad2deg(maxangle))
+    @printf(io, "%0.6f %0.6f /\n", -rad2deg(max_angle), -rad2deg(min_angle))
     @printf(io, "0.0 %0.6f %0.6f\n", 1.01*waterdepth, 1.01 * maxr / 1000.0)
   end
   xrev, zrev
