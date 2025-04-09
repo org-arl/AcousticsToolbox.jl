@@ -189,3 +189,12 @@ end
   @test minimum(xloss[201:end,:]) ≈ 77.9 atol=0.1
   @test -10 .* log10.(mean(10 .^ (-xloss[201:end,:] ./ 20))) ≈ 43.8 atol=0.1
 end
+
+# Dicken's sea mount
+# s = SampledField([1476.7,1476.7,1476.7,1476.7,1476.7,1476.7,1476.7,1476.7,1476.7,1472.6,1468.8,1467.2,1471.6,1473.6,1473.6,1472.7,1472.2,1471.6,1471.6,1472.0,1472.7,1473.1,1474.9,1477.0,1478.1,1480.7,1483.8,1490.5,1498.3,1506.5]; z=[0,-5,-10,-15,-20,-25,-30,-35,-38,-50,-70,-100,-140,-160,-170,-200,-215,-250,-300,-370,-450,-500,-700,-900,-1000,-1250,-1500,-2000,-2500,-3000])
+# b = SampledField([3000,3000,500,3000,3000]; x=[0,10e3,20e3,30e3,100e3])
+# env = UnderwaterEnvironment(bathymetry = b, soundspeed = s, seabed = FluidBoundary(1.5*water_density(), 1550.0u"m/s", 0.5))
+# tx = AcousticSource((x=0, z=-18u"m"), 230.0)
+# rxs = AcousticReceiverGrid2D(0:100:100000, -3000:15:0)
+# pm = Bellhop(env; min_angle=-89°, max_angle=89°)
+# xloss = transmission_loss(pm, tx, rxs; mode=:coherent)
