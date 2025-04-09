@@ -285,8 +285,8 @@ end
 function createadfile(filename, data, func, maxr, f)
   open(filename, "w") do io
     interp = "L"
-    if data isa SampledDepth || data isa SampledAltitude
-      x = data.x
+    if data isa SampledFieldX
+      x = data.xrange
       data.interp !== :linear && (interp = "C")
     else
       x = range(0.0, maxr; length=recommendlength(maxr, f))
@@ -294,7 +294,7 @@ function createadfile(filename, data, func, maxr, f)
     println(io, "'", interp, "'")
     println(io, length(x))
     for i ∈ 1:length(x)
-      @printf(io, "%0.6f %0.6f\n", x[i]/1000.0, func(data, x[i], 0.0))
+      @printf(io, "%0.6f %0.6f\n", x[i]/1000.0, func(data, (x[i], 0.0)))
     end
   end
 end
