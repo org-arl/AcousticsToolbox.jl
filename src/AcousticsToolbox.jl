@@ -3,11 +3,14 @@ module AcousticsToolbox
 import AcousticsToolbox_jll
 
 using UnderwaterAcoustics
-using UnderwaterAcoustics: AbstractRayPropagationModel, AbstractAcousticSource, AbstractAcousticReceiver, AcousticReceiverGrid2D
-using UnderwaterAcoustics: RayArrival, SampledFieldX, is_range_dependent, is_constant, SampledFieldZ, value, in_units
+using UnderwaterAcoustics: AbstractRayPropagationModel, AbstractModePropagationModel
+using UnderwaterAcoustics: AbstractAcousticSource, AbstractAcousticReceiver, AcousticReceiverGrid2D
+using UnderwaterAcoustics: RayArrival, ModeArrival, SampledFieldX, SampledFieldZ
+using UnderwaterAcoustics: is_range_dependent, is_constant, value, in_units
 using Printf
 
-include("Bellhop.jl")
-#include("Kraken.jl")
+include("bellhop.jl")
+include("kraken.jl")
+include("common.jl")
 
 end # module

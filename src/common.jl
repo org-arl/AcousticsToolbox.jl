@@ -1,120 +1,3 @@
-export Bellhop
-
-const BELLHOP = Ref{Cmd}(AcousticsToolbox_jll.bellhop())
-
-"""
-A propagation model based on the FORTRAN OALIB Bellhop model.
-"""
-struct Bellhop{T} <: AbstractRayPropagationModel
-  env::T
-  nbeams::Int
-  min_angle::Float32
-  max_angle::Float32
-  gaussian::Bool
-  debug::Bool
-  function Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
-    _check_env(env)
-    -π/2 ≤ min_angle ≤ π/2 || throw(ArgumentError("min_angle should be between -π/2 and π/2"))
-    -π/2 ≤ max_angle ≤ π/2 || throw(ArgumentError("max_angle should be between -π/2 and π/2"))
-    min_angle < max_angle || throw(ArgumentError("max_angle should be more than min_angle"))
-    new{typeof(env)}(env, max(nbeams, 0), Float32(in_units(u"rad", min_angle)), Float32(in_units(u"rad", max_angle)), gaussian, debug)
-  end
-end
-
-"""
-    Bellhop(env; kwargs...)
-
-Create a Bellhop propagation model.
-
-Supported keyword arguments:
-- `nbeams`: number of beams to use (default: 0, auto)
-- `min_angle`: minimum beam angle (default: -80°)
-- `max_angle`: maximum beam angle (default: 80°)
-- `gaussian`: use Gaussian beam (default: false)
-- `debug`: debug mode (default: false)
-
-Enabling debug mode will create a temporary directory with the Bellhop input and output files.
-This allows manual inspection of the files.
-"""
-Bellhop(env; nbeams=0, min_angle=-80°, max_angle=80°, gaussian=false, debug=false) = Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
-
-Base.show(io::IO, pm::Bellhop) = print(io, "Bellhop(⋯)")
-
-### interface functions
-
-function UnderwaterAcoustics.arrivals(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; paths=true)
-  mktempdir(prefix="bellhop_") do dirname
-    nbeams = pm.nbeams
-    nbeams == 0 && (nbeams = round(Int, (pm.max_angle - pm.min_angle) / deg2rad(0.05)) + 1)
-    _write_env(pm, [tx1], [rx1], "A", dirname; nbeams)
-    _bellhop(dirname, pm.debug)
-    arr = _read_arr(joinpath(dirname, "model.arr"))
-    if paths
-      _write_env(pm, [tx1], [rx1], "E", dirname; nbeams)
-      _bellhop(dirname, pm.debug)
-      arr2 = _read_rays(joinpath(dirname, "model.ray"))
-      for i ∈ eachindex(arr)
-        ndx = findall(a -> a.ns == arr[i].ns && a.nb == arr[i].nb, arr2)
-        if !isempty(ndx)
-          ndx = argmin(j -> abs(arr2[j].θₛ - arr[i].θₛ), ndx)
-          arr[i] = eltype(arr)(arr[i].t, arr[i].ϕ, arr[i].ns, arr[i].nb, arr[i].θₛ, arr[i].θᵣ, arr2[ndx].path)
-        end
-      end
-    end
-    arr
-  end
-end
-
-function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSource, rx::AcousticReceiverGrid2D; mode=:coherent)
-  if mode === :coherent
-    taskcode = "C"
-  elseif mode === :incoherent
-    taskcode = "I"
-  elseif mode === :semicoherent
-    taskcode = "S"
-  else
-    throw(ArgumentError("Unknown mode :" * string(mode)))
-  end
-  mktempdir(prefix="bellhop_") do dirname
-    xrev, zrev = _write_env(pm, [tx1], rx, taskcode, dirname)
-    _bellhop(dirname, pm.debug)
-    _read_shd(joinpath(dirname, "model.shd"); xrev=xrev, zrev=zrev)
-  end
-end
-
-function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; mode=:coherent)
-  if mode === :coherent
-    taskcode = "C"
-  elseif mode === :incoherent
-    taskcode = "I"
-  elseif mode === :semicoherent
-    taskcode = "S"
-  else
-    throw(ArgumentError("Unknown mode :" * string(mode)))
-  end
-  mktempdir(prefix="bellhop_") do dirname
-    _write_env(pm, [tx1], [rx1], taskcode, dirname)
-    _bellhop(dirname, pm.debug)
-    _read_shd(joinpath(dirname, "model.shd"))[1]
-  end
-end
-
-"""
-    rays(pm::Bellhop, tx, max_range)
-    rays(pm::Bellhop, tx, max_range, nbeams)
-
-Compute ray trace for a single transmitter.
-"""
-function rays(pm::Bellhop, tx1::AbstractAcousticSource, max_range::Real, nbeams::Int=pm.nbeams)
-  mktempdir(prefix="bellhop_") do dirname
-    _write_env(pm, [tx1], [AcousticReceiver(max_range, 0)], "R", dirname; nbeams)
-    _bellhop(dirname, pm.debug)
-    _read_rays(joinpath(dirname, "model.ray"))
-  end
-end
-
-### helper functions
-
 struct ExecError <: Exception
   name::String
   details::Vector{String}
@@ -131,26 +14,6 @@ function Base.show(io::IO, e::ExecError)
   end
 end
 
-function _bellhop(dirname, debug)
-  infilebase = joinpath(dirname, "model")
-  outfilename = joinpath(dirname, "output.txt")
-  try
-    run(pipeline(ignorestatus(`$(BELLHOP[]) $infilebase`); stdout=outfilename, stderr=outfilename))
-    if debug
-      @info "Bellhop run completed in $dirname, press ENTER to delete intermediate files..."
-      readline()
-    end
-  catch
-    throw(ExecError("Bellhop", ["Unable to execute bellhop.exe"]))
-  end
-  err = String[]
-  _check_err!(err, outfilename)
-  _check_err!(err, joinpath(dirname, "model.prt"))
-  if length(err) > 0
-    throw(ExecError("Bellhop", err))
-  end
-end
-
 function _check_err!(err, filename)
   output = false
   open(filename) do f
@@ -163,25 +26,11 @@ function _check_err!(err, filename)
   end
 end
 
-function _check_env(env)
-  env.seabed isa FluidBoundary || throw(ArgumentError("seabed must be a FluidBoundary"))
-  env.surface isa FluidBoundary || throw(ArgumentError("surface must be a FluidBoundary"))
-  is_range_dependent(env.soundspeed) && throw(ArgumentError("range-dependent soundspeed not supported"))
-  mktempdir(prefix="bellhop_") do dirname
-    try
-      bellhop(dirname, false)
-    catch e
-      e isa ExecError && e.details == ["Unable to execute bellhop.exe"] && throw(e)
-    end
-  end
-  nothing
-end
-
-function _write_env(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle, max_angle=pm.max_angle, nbeams=pm.nbeams)
-  all(location(tx1).x == 0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop requires transmitters at (0, 0, z)"))
-  all(location(tx1).y == 0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop 2D requires transmitters in the x-z plane"))
-  all(location(rx1).x >= 0 for rx1 ∈ rx) || throw(ArgumentError("Bellhop requires receivers to be in the +x halfspace"))
-  all(location(rx1).y == 0 for rx1 ∈ rx) || throw(ArgumentError("Bellhop 2D requires receivers in the x-z plane"))
+function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
+  all(location(tx1).x == 0 for tx1 ∈ tx) || throw(ArgumentError("Transmitters must be at (0, 0, z)"))
+  all(location(tx1).y == 0 for tx1 ∈ tx) || throw(ArgumentError("2D model requires transmitters in the x-z plane"))
+  all(location(rx1).x >= 0 for rx1 ∈ rx) || throw(ArgumentError("Receivers must be in the +x halfspace"))
+  all(location(rx1).y == 0 for rx1 ∈ rx) || throw(ArgumentError("2D model requires receivers in the x-z plane"))
   xrev = false
   zrev = false
   env = pm.env
@@ -193,7 +42,7 @@ function _write_env(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_ang
     f = sum(flist) / length(flist)
     maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
     @printf(io, "%0.6f\n", f)
-    println(io, "1")
+    println(io, "1")  # number of media
     if length(rx) == 1
       maxr = location(only(rx)).x
     elseif rx isa AcousticReceiverGrid2D
@@ -205,7 +54,7 @@ function _write_env(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_ang
     sspi = "S"
     ssp isa SampledFieldZ && ssp.interp === :linear && (sspi = "C")
     surf = env.surface === RigidBoundary ? "R" : env.surface === PressureReleaseBoundary ? "V" : "A"
-    print(io, "'", sspi, surf, "WT")     # bottom attenuation in dB/wavelength, Thorpe volume attenuation
+    print(io, "'", sspi, surf, "WT")  # bottom attenuation in dB/wavelength, Thorpe volume attenuation
     if surf == "A"
       @printf(io, "0.0 %0.6f 0.0 %0.6f %0.6f /\n", env.surface.c, env.surface.ρ / env.density, in_dBperλ(env.surface.δ))
     end
@@ -220,7 +69,7 @@ function _write_env(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_ang
     else
       waterdepth = maximum(x -> value(bathy, (x, 0, 0)), range(0.0, maxr; length=_recommend_len(maxr, f)))
     end
-    @printf(io, "0 0.0 %0.6f\n", waterdepth)
+    @printf(io, "%i 0.0 %0.6f\n", (pm isa Kraken ? pm.nmesh : 0), waterdepth)
     if is_constant(ssp)
       @printf(io, "0.0 %0.6f /\n", value(ssp))
       @printf(io, "%0.6f %0.6f /\n", waterdepth, value(ssp))
@@ -239,9 +88,13 @@ function _write_env(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_ang
       print(io, "*")
       _create_alt_bathy_file(joinpath(dirname, "model.bty"), bathy, value, maxr, f)
     end
-    println(io, "' 0.0") # bottom roughness = 0
+    println(io, "' 0.0")  # bottom roughness = 0
     if env.seabed !== RigidBoundary && env.seabed !== PressureReleaseBoundary
       @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δ))
+    end
+    if pm isa Kraken
+      @printf(io, "%0.6f  %0.6f\n", pm.clow, pm.chigh)
+      @printf(io, "%0.6f\n", 1.01 * maxr / 1000.0)
     end
     _print_array(io, [-location(tx1).z for tx1 ∈ tx])
     if length(rx) == 1
@@ -261,10 +114,12 @@ function _write_env(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_ang
       _print_array(io, d)
       _print_array(io, r)
     end
-    println(io, "'", taskcode, pm.gaussian ? "B'" : "'")
-    @printf(io, "%d\n", nbeams)
-    @printf(io, "%0.6f %0.6f /\n", -rad2deg(max_angle), -rad2deg(min_angle))
-    @printf(io, "0.0 %0.6f %0.6f\n", 1.01*waterdepth, 1.01 * maxr / 1000.0)
+    if pm isa Bellhop
+      println(io, "'", taskcode, pm.gaussian ? "B'" : "'")
+      @printf(io, "%d\n", max(nbeams, pm.nbeams))
+      @printf(io, "%0.6f %0.6f /\n", -rad2deg(pm.max_angle), -rad2deg(pm.min_angle))
+      @printf(io, "0.0 %0.6f %0.6f\n", 1.01*waterdepth, 1.01 * maxr / 1000.0)
+    end
   end
   xrev, zrev
 end
