@@ -13,7 +13,7 @@ struct Bellhop{T} <: AbstractRayPropagationModel
   gaussian::Bool
   debug::Bool
   function Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
-    checkenv(env)
+    _check_env(env)
     -π/2 ≤ min_angle ≤ π/2 || throw(ArgumentError("min_angle should be between -π/2 and π/2"))
     -π/2 ≤ max_angle ≤ π/2 || throw(ArgumentError("max_angle should be between -π/2 and π/2"))
     min_angle < max_angle || throw(ArgumentError("max_angle should be more than min_angle"))
@@ -46,13 +46,13 @@ function UnderwaterAcoustics.arrivals(pm::Bellhop, tx1::AbstractAcousticSource, 
   mktempdir(prefix="bellhop_") do dirname
     nbeams = pm.nbeams
     nbeams == 0 && (nbeams = round(Int, (pm.max_angle - pm.min_angle) / deg2rad(0.05)) + 1)
-    writeenv(pm, [tx1], [rx1], "A", dirname; nbeams)
-    bellhop(dirname, pm.debug)
-    arr = readarrivals(joinpath(dirname, "model.arr"))
+    _write_env(pm, [tx1], [rx1], "A", dirname; nbeams)
+    _bellhop(dirname, pm.debug)
+    arr = _read_arr(joinpath(dirname, "model.arr"))
     if paths
-      writeenv(pm, [tx1], [rx1], "E", dirname; nbeams)
-      bellhop(dirname, pm.debug)
-      arr2 = readrays(joinpath(dirname, "model.ray"))
+      _write_env(pm, [tx1], [rx1], "E", dirname; nbeams)
+      _bellhop(dirname, pm.debug)
+      arr2 = _read_rays(joinpath(dirname, "model.ray"))
       for i ∈ eachindex(arr)
         ndx = findall(a -> a.ns == arr[i].ns && a.nb == arr[i].nb, arr2)
         if !isempty(ndx)
@@ -76,9 +76,9 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
     throw(ArgumentError("Unknown mode :" * string(mode)))
   end
   mktempdir(prefix="bellhop_") do dirname
-    xrev, zrev = writeenv(pm, [tx1], rx, taskcode, dirname)
-    bellhop(dirname, pm.debug)
-    readshd(joinpath(dirname, "model.shd"); xrev=xrev, zrev=zrev)
+    xrev, zrev = _write_env(pm, [tx1], rx, taskcode, dirname)
+    _bellhop(dirname, pm.debug)
+    _read_shd(joinpath(dirname, "model.shd"); xrev=xrev, zrev=zrev)
   end
 end
 
@@ -93,9 +93,9 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
     throw(ArgumentError("Unknown mode :" * string(mode)))
   end
   mktempdir(prefix="bellhop_") do dirname
-    writeenv(pm, [tx1], [rx1], taskcode, dirname)
-    bellhop(dirname, pm.debug)
-    readshd(joinpath(dirname, "model.shd"))[1]
+    _write_env(pm, [tx1], [rx1], taskcode, dirname)
+    _bellhop(dirname, pm.debug)
+    _read_shd(joinpath(dirname, "model.shd"))[1]
   end
 end
 
@@ -107,30 +107,31 @@ Compute ray trace for a single transmitter.
 """
 function rays(pm::Bellhop, tx1::AbstractAcousticSource, max_range::Real, nbeams::Int=pm.nbeams)
   mktempdir(prefix="bellhop_") do dirname
-    writeenv(pm, [tx1], [AcousticReceiver(max_range, 0)], "R", dirname; nbeams)
-    bellhop(dirname, pm.debug)
-    readrays(joinpath(dirname, "model.ray"))
+    _write_env(pm, [tx1], [AcousticReceiver(max_range, 0)], "R", dirname; nbeams)
+    _bellhop(dirname, pm.debug)
+    _read_rays(joinpath(dirname, "model.ray"))
   end
 end
 
 ### helper functions
 
-struct BellhopError <: Exception
+struct ExecError <: Exception
+  name::String
   details::Vector{String}
 end
 
-function Base.show(io::IO, e::BellhopError)
+function Base.show(io::IO, e::ExecError)
   if length(e.details) == 1
     println(io, e.details[1])
   else
-    println(io, "Bellhop said:")
+    println(io, "$(e.name) said:")
     for s ∈ e.details
       println(io, "  ", s)
     end
   end
 end
 
-function bellhop(dirname, debug)
+function _bellhop(dirname, debug)
   infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
@@ -140,17 +141,17 @@ function bellhop(dirname, debug)
       readline()
     end
   catch
-    throw(BellhopError(["Unable to execute bellhop.exe"]))
+    throw(ExecError("Bellhop", ["Unable to execute bellhop.exe"]))
   end
   err = String[]
-  checkerr!(err, outfilename)
-  checkerr!(err, joinpath(dirname, "model.prt"))
+  _check_err!(err, outfilename)
+  _check_err!(err, joinpath(dirname, "model.prt"))
   if length(err) > 0
-    throw(BellhopError(err))
+    throw(ExecError("Bellhop", err))
   end
 end
 
-function checkerr!(err, filename)
+function _check_err!(err, filename)
   output = false
   open(filename) do f
     for s in eachline(f)
@@ -162,7 +163,7 @@ function checkerr!(err, filename)
   end
 end
 
-function checkenv(env)
+function _check_env(env)
   env.seabed isa FluidBoundary || throw(ArgumentError("seabed must be a FluidBoundary"))
   env.surface isa FluidBoundary || throw(ArgumentError("surface must be a FluidBoundary"))
   is_range_dependent(env.soundspeed) && throw(ArgumentError("range-dependent soundspeed not supported"))
@@ -170,13 +171,13 @@ function checkenv(env)
     try
       bellhop(dirname, false)
     catch e
-      e isa BellhopError && e.details == ["Unable to execute bellhop.exe"] && throw(e)
+      e isa ExecError && e.details == ["Unable to execute bellhop.exe"] && throw(e)
     end
   end
   nothing
 end
 
-function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle, max_angle=pm.max_angle, nbeams=pm.nbeams)
+function _write_env(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle, max_angle=pm.max_angle, nbeams=pm.nbeams)
   all(location(tx1).x == 0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop requires transmitters at (0, 0, z)"))
   all(location(tx1).y == 0 for tx1 ∈ tx) || throw(ArgumentError("Bellhop 2D requires transmitters in the x-z plane"))
   all(location(rx1).x >= 0 for rx1 ∈ rx) || throw(ArgumentError("Bellhop requires receivers to be in the +x halfspace"))
@@ -210,16 +211,16 @@ function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle
     end
     if is_range_dependent(env.altimetry)
       print(io, "*")
-      createadfile(joinpath(dirname, "model.ati"), env.altimetry, (q, p) -> -value(q, p), maxr, f)
+      _create_alt_bathy_file(joinpath(dirname, "model.ati"), env.altimetry, (q, p) -> -value(q, p), maxr, f)
     end
     println(io, "'")
     bathy = env.bathymetry
     if is_constant(bathy)
       waterdepth = value(bathy)
     else
-      waterdepth = maximum(x -> value(bathy, (x, 0, 0)), range(0.0, maxr; length=recommendlength(maxr, f)))
+      waterdepth = maximum(x -> value(bathy, (x, 0, 0)), range(0.0, maxr; length=_recommend_len(maxr, f)))
     end
-    @printf(io, "1 0.0 %0.6f\n", waterdepth)
+    @printf(io, "0 0.0 %0.6f\n", waterdepth)
     if is_constant(ssp)
       @printf(io, "0.0 %0.6f /\n", value(ssp))
       @printf(io, "%0.6f %0.6f /\n", waterdepth, value(ssp))
@@ -228,7 +229,7 @@ function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle
         @printf(io, "%0.6f %0.6f /\n", -z, ssp(z))
       end
     else
-      for d ∈ range(0.0, waterdepth; length=recommendlength(waterdepth, f))
+      for d ∈ range(0.0, waterdepth; length=_recommend_len(waterdepth, f))
         @printf(io, "%0.6f %0.6f /\n", d, ssp(-d))
       end
       floor(waterdepth) != waterdepth && @printf(io, "%0.6f %0.6f /\n", waterdepth, ssp(-waterdepth))
@@ -236,16 +237,16 @@ function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle
     print(io, env.seabed === RigidBoundary ? "'R" : env.seabed === PressureReleaseBoundary ? "'V" : "'A")
     if is_range_dependent(bathy)
       print(io, "*")
-      createadfile(joinpath(dirname, "model.bty"), bathy, value, maxr, f)
+      _create_alt_bathy_file(joinpath(dirname, "model.bty"), bathy, value, maxr, f)
     end
     println(io, "' 0.0") # bottom roughness = 0
     if env.seabed !== RigidBoundary && env.seabed !== PressureReleaseBoundary
       @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δ))
     end
-    printarray(io, [-location(tx1).z for tx1 ∈ tx])
+    _print_array(io, [-location(tx1).z for tx1 ∈ tx])
     if length(rx) == 1
-      printarray(io, [-location(rx[1]).z])
-      printarray(io, [maxr / 1000.0])
+      _print_array(io, [-location(rx[1]).z])
+      _print_array(io, [maxr / 1000.0])
     elseif rx isa AcousticReceiverGrid2D
       d = reverse(-rx.zrange)
       if first(d) > last(d)
@@ -257,8 +258,8 @@ function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle
         r = reverse(r)
         xrev = true
       end
-      printarray(io, d)
-      printarray(io, r)
+      _print_array(io, d)
+      _print_array(io, r)
     end
     println(io, "'", taskcode, pm.gaussian ? "B'" : "'")
     @printf(io, "%d\n", nbeams)
@@ -268,7 +269,7 @@ function writeenv(pm::Bellhop, tx, rx, taskcode, dirname; min_angle=pm.min_angle
   xrev, zrev
 end
 
-function printarray(io, a::AbstractVector)
+function _print_array(io, a::AbstractVector)
   println(io, length(a))
   for a1 ∈ a
     @printf(io, "%0.6f ", a1)
@@ -276,20 +277,20 @@ function printarray(io, a::AbstractVector)
   println(io, "/")
 end
 
-function recommendlength(x, f)
+function _recommend_len(x, f)
   # recommendation based on nominal half-wavelength spacing
   λ = 1500.0 / f
   clamp(round(Int, 2x / λ) + 1, 25, 1000)
 end
 
-function createadfile(filename, data, func, maxr, f)
+function _create_alt_bathy_file(filename, data, func, maxr, f)
   open(filename, "w") do io
     interp = "L"
     if data isa SampledFieldX
       x = data.xrange
       data.interp !== :linear && (interp = "C")
     else
-      x = range(0.0, maxr; length=recommendlength(maxr, f))
+      x = range(0.0, maxr; length=_recommend_len(maxr, f))
     end
     println(io, "'", interp, "'")
     println(io, length(x))
@@ -299,7 +300,7 @@ function createadfile(filename, data, func, maxr, f)
   end
 end
 
-function readrays(filename)
+function _read_rays(filename)
   rays = RayArrival{Float64,Float64}[]
   open(filename, "r") do io
     [readline(io) for i ∈ 1:7]
@@ -320,7 +321,7 @@ function readrays(filename)
   rays
 end
 
-function readarrivals(filename)
+function _read_arr(filename)
   arrivals = RayArrival{Float64,Float64,Float64,Float64,Union{Missing,Vector{PosF64}}}[]
   open(filename, "r") do io
     s = strip(readline(io))
@@ -369,7 +370,7 @@ function readarrivals(filename)
   sort(arrivals; by = a -> a.t)
 end
 
-function readshd(filename; xrev=false, zrev=false)
+function _read_shd(filename; xrev=false, zrev=false)
   open(filename, "r") do io
     r = read(io, UInt32)
     seek(io, 4r)
