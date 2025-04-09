@@ -78,7 +78,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
   mktempdir(prefix="bellhop_") do dirname
     xrev, zrev = _write_env(pm, [tx1], rx, dirname; taskcode)
     _bellhop(dirname, pm.debug)
-    _read_shd(joinpath(dirname, "model.shd"); xrev=xrev, zrev=zrev)
+    _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
   end
 end
 
@@ -125,7 +125,7 @@ function _bellhop(dirname, debug)
       readline()
     end
   catch
-    throw(ExecError("Bellhop", ["Unable to execute bellhop.exe"]))
+    throw(ExecError("Bellhop", ["Unable to execute Bellhop"]))
   end
   err = String[]
   _check_err!(err, outfilename)
