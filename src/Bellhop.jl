@@ -17,7 +17,7 @@ struct Bellhop{T} <: AbstractRayPropagationModel
     -π/2 ≤ min_angle ≤ π/2 || throw(ArgumentError("min_angle should be between -π/2 and π/2"))
     -π/2 ≤ max_angle ≤ π/2 || throw(ArgumentError("max_angle should be between -π/2 and π/2"))
     min_angle < max_angle || throw(ArgumentError("max_angle should be more than min_angle"))
-    new{typeof(env)}(env, max(nbeams, 0), Float32(min_angle), Float32(max_angle), gaussian, debug)
+    new{typeof(env)}(env, max(nbeams, 0), Float32(in_units(u"rad", min_angle)), Float32(in_units(u"rad", max_angle)), gaussian, debug)
   end
 end
 
@@ -36,7 +36,7 @@ Supported keyword arguments:
 Enabling debug mode will create a temporary directory with the Bellhop input and output files.
 This allows manual inspection of the files.
 """
-Bellhop(env; nbeams=0, min_angle=-deg2rad(80), max_angle=deg2rad(80), gaussian=false, debug=false) = Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
+Bellhop(env; nbeams=0, min_angle=-80°, max_angle=80°, gaussian=false, debug=false) = Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
 
 Base.show(io::IO, pm::Bellhop) = print(io, "Bellhop(⋯)")
 
@@ -308,7 +308,7 @@ function readrays(filename)
       length(s) == 0 && break
       aod = parse(Float64, s)
       pts, sb, bb = parse.(Int, split(strip(readline(io)), r" +"))
-      raypath = Array{NTuple{3,Float64}}(undef, pts)
+      raypath = Vector{PosF64}(undef, pts)
       for k ∈ 1:pts
         eof(io) && break
         x, d = parse.(Float64, split(strip(readline(io)), r" +"))
@@ -321,7 +321,7 @@ function readrays(filename)
 end
 
 function readarrivals(filename)
-  arrivals = RayArrival{Float64,Float64,Float64,Float64,Union{Missing,Vector{NTuple{3,Float64}}}}[]
+  arrivals = RayArrival{Float64,Float64,Float64,Float64,Union{Missing,Vector{PosF64}}}[]
   open(filename, "r") do io
     s = strip(readline(io))
     if occursin("2D", s)
