@@ -14,14 +14,15 @@ struct Kraken{T} <: AbstractModePropagationModel
   clow::Float32
   chigh::Float32
   leaky::Bool
+  robust::Bool
   debug::Bool
-  function Kraken(env, nmodes, nmesh, clow, chigh, leaky, debug)
+  function Kraken(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
     _check_env(Kraken, env)
     nmodes ≥ 1 || throw(ArgumentError("number of modes should be positive"))
     nmesh ≥ 0 || throw(ArgumentError("number of mesh points should be non-negative"))
     clow ≥ 0.0 || throw(ArgumentError("clow should be non-negative"))
     chigh > clow || throw(ArgumentError("chigh should be more than clow"))
-    new{typeof(env)}(env, nmodes, nmesh, clow, chigh, leaky, debug)
+    new{typeof(env)}(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
   end
 end
 
@@ -35,23 +36,36 @@ Supported keyword arguments:
 - `nmesh`: number of mesh points (default: 0, auto)
 - `clow`: lower limit of phase speed (default: 0, auto)
 - `chigh`: upper limit of phase speed (default: 1600.0)
-- `leaky`: use KrakenC for leaky modes (default: false)
+- `leaky`: use KrakenC for leaky modes (default: true)
+- `robust`: use robust (but slow) root finder (default: false)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Kraken input and output files.
 This allows manual inspection of the files.
 """
-Kraken(env; nmodes=9999, nmesh=0, clow=0.0, chigh=1600.0, leaky=false, debug=false) = Kraken(env, nmodes, nmesh, clow, chigh, leaky, debug)
+Kraken(env; nmodes=9999, nmesh=0, clow=0.0, chigh=1600.0, leaky=true, robust=false, debug=false) = Kraken(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
 
 Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 
 ### interface functions
 
-# function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
-#   mktempdir(prefix="kraken_") do dirname
-#     # TODO
-#   end
-# end
+function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
+  mktempdir(prefix="kraken_") do dirname
+    # replace a single receiver with a grid of receivers at λ/10 spacing to sample the modes
+    λ = maximum(pm.env.soundspeed) / tx1.frequency
+    D = maximum(pm.env.bathymetry)
+    rxs = AcousticReceiverGrid2D(rx1.pos.x, range(-D, 0; length=ceil(Int, 10D/λ + 1)))
+    _write_env(pm, [tx1], rxs, dirname)
+    _kraken(dirname, pm.leaky, pm.debug)
+    ϕ, kᵣ, depths = _read_mod(pm, dirname)    # read mode shapes
+    m, k, v = _read_grp(pm, dirname)          # read group velocity
+    vs = SampledField(v; x=k)                 # interpolate group velocity
+    map(eachindex(kᵣ)) do i
+      ψ = SampledField(ϕ[:,i]; z=-depths)
+      ModeArrival(i, kᵣ[i], ψ, vs(real(kᵣ[i])))
+    end
+  end
+end
 
 function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSource, rx::AcousticReceiverGrid2D; mode=:coherent)
   if mode === :coherent
@@ -70,7 +84,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   end
 end
 
-function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; mode=:coherent)
+function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; mode=:coherent)
   if mode === :coherent
     taskcode = 'C'
   elseif mode === :incoherent
@@ -93,6 +107,8 @@ function _check_env(::Type{Kraken}, env)
   env.seabed isa FluidBoundary || throw(ArgumentError("seabed must be a FluidBoundary"))
   env.surface isa FluidBoundary || throw(ArgumentError("surface must be a FluidBoundary"))
   is_range_dependent(env.soundspeed) && throw(ArgumentError("range-dependent soundspeed not supported"))
+  is_range_dependent(env.altimetry) && throw(ArgumentError("range-dependent altimetry not supported"))
+  is_range_dependent(env.bathymetry) && throw(ArgumentError("range-dependent bathymetry not supported"))
   mktempdir(prefix="kraken_") do dirname
     try
       kraken(dirname, false)
@@ -144,40 +160,82 @@ function _field(dirname, debug)
   end
 end
 
-function _write_flp(pm::Kraken, tx::Vector{<:AcousticSource}, rx::AbstractArray{<:AcousticReceiver}, dirname)
+function _write_flp(pm::Kraken, tx, rx, dirname)
   filename = joinpath(dirname, "model.flp")
-  name = split(basename(dirname), "_")[end]
   open(filename, "w") do io
-    println(io, "'", name, "'")        # 1) title
-    length(tx) > 1 && (src = "X")      # 2) line source
-    length(tx) == 1 && (src = "R")     # 2) point source
-    # 2)  Adiabatic mode thoery TODO: add coupled model
-    # TODO: check why coherent option cause error
-    print(io, "'", src, "A", "'\n")    # 2) Coherent / incoherent mode addition
-    @printf(io, "%i\n", pm.nmodes)     # 3) Number of modes
-    println(io, "1")                   # 4) Number of profile    TODO: hardcoded, check for general setting
-    println(io, "0.0")                 # 4) Profile ranges (km)  TODO: hardcoded, check for general setting
+    println(io, "/")                # take title from modes file
+    println(io, "'RA'")             # point source, adiabatic modes
+    @printf(io, "%i\n", pm.nmodes)  # maximum number of modes to use
+    println(io, "1")                # number of profiles (for range dependence)
+    println(io, "0.0")              # range (km) of first profile
     if length(rx) == 1
-      _print_array(io, [location(rx[1])[1]./ 1000.0] )     # 6) receiver ranges(km)
-      _print_array(io, [-location(tx1)[3] for tx1 ∈ tx])   #    source depth (m) TODO: check multiple sources how
-      _print_array(io, [-location(rx1)[3] for rx1 ∈ rx] )  # 6) receiver depth(m)
-      nr = 1
+      _print_array(io, [location(rx[1]).x / 1000] )       # receiver ranges (km)
+      _print_array(io, [-location(tx1).z for tx1 ∈ tx])   # source depths (m)
+      _print_array(io, [-location(rx[1]).z])              # receiver depths (m)
+      _print_array(io, zeros(1))                          # receiver range displacements
     elseif rx isa AcousticReceiverGrid2D
       d = reverse(-rx.zrange)
-      if first(d) > last(d)
-       d = reverse(d)
-       zrev = true
-      end
       r = rx.xrange ./ 1000.0
-      if first(r) > last(r)
-       r = reverse(r)
-       xrev = true
-      end
-      _print_array(io, r)                                 #    receiver ranges (km)
-      _print_array(io, [-location(tx1)[3] for tx1 ∈ tx])  #    source depth (m)
-      _print_array(io, d)                                 # 6) receiver depth(m)
-      nr = length(d)
+      first(d) > last(d) && (d = reverse(d))
+      first(r) > last(r) && (r = reverse(r))
+      _print_array(io, r)                                 # receiver ranges (km)
+      _print_array(io, [-location(tx1)[3] for tx1 ∈ tx])  # source depths (m)
+      _print_array(io, d)                                 # receiver depths (m)
+      _print_array(io, zeros(length(d)))                  # receiver range displacements
+    else
+      error("Receivers must be on a 2D grid")
     end
-    _print_array(io, zeros(nr))                           # number of receiver range displacement (same as NRD)
   end
+end
+
+function _read_mod(pm::Kraken, dirname)
+  filename = joinpath(dirname, "model.mod")
+  open(filename, "r") do f
+    reclen = 4 * read(f, UInt32)
+    title = String(read!(f, zeros(UInt8, 80))) |> strip
+    nfreq = read(f, UInt32) |> Int
+    @assert nfreq == 1              # supports only one frequency
+    nmedia = read(f, UInt32) |> Int
+    @assert nmedia == 1             # supports only one medium
+    ntot = read(f, UInt32) |> Int
+    nmat = read(f, UInt32) |> Int
+    seek(f, 2reclen)
+    _, ρ = read!(f, zeros(Float32, 2, nmedia))
+    seek(f, 4reclen)
+    depths = read!(f, zeros(Float32, ntot))
+    seek(f, 5reclen)
+    nmodes = read(f, UInt32) |> Int
+    rec = 6
+    ϕ = zeros(ComplexF32, nmat, nmodes)
+    for i in 1:nmodes
+      seek(f, (rec + i) * reclen)
+      x = read!(f, zeros(Float32, 2, nmat))
+      ϕ[:,i] = complex.(x[1,:], x[2,:])
+    end
+    seek(f, (rec + nmodes + 1) * reclen)
+    x = read!(f, zeros(Float32, 2, nmodes))
+    kᵣ = complex.(x[1,:], x[2,:])
+    (; ϕ, kᵣ, depths)
+  end
+end
+
+function _read_grp(pm::Kraken, dirname)
+  filename = joinpath(dirname, "model.prt")
+  m = Int[]
+  kᵣ = Float32[]
+  v = Float32[]
+  s = readlines(filename)
+  i = findfirst(contains("Group Speed"), s)
+  if i !== nothing
+    i += 2
+    while i <= length(s)
+      f = split(strip(s[i]), r" +")
+      length(f) == 5 || break
+      push!(m, parse(Int, f[1]))
+      push!(kᵣ, parse(Float32, f[2]))
+      push!(v, parse(Float32, f[5]))
+      i += 1
+    end
+  end
+  (; m, kᵣ, v)
 end
