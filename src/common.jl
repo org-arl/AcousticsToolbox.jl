@@ -115,7 +115,8 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       _print_array(io, r)
     end
     if pm isa Bellhop
-      println(io, "'", taskcode, pm.gaussian ? "B'" : "'")
+      bcode = pm.beam_type == :cartesian ? 'C' : pm.beam_type == :ray_centered ? 'R' : pm.beam_type == :gaussian ? 'B' : 'G'
+      println(io, "'", taskcode, bcode, pm.beam_shift ? "S'" : "'")
       @printf(io, "%d\n", max(nbeams, pm.nbeams))
       @printf(io, "%0.6f %0.6f /\n", -rad2deg(pm.max_angle), -rad2deg(pm.min_angle))
       @printf(io, "0.0 %0.6f %0.6f\n", 1.01*waterdepth, 1.01 * maxr / 1000.0)

@@ -174,7 +174,7 @@ end
   @test arr[10].θᵣ ≈ deg2rad(19.1) atol=0.1
   @test arr[10].t ≈ 69036.50 / 1000 atol = 0.0001
   @test arr[10].ϕ ≈ 10^(-101.8/20) * cispi(85.6/180) atol=0.001
-  pm = Bellhop(env; min_angle=-20.3°, max_angle=20.3°, gaussian=true)
+  pm = Bellhop(env; min_angle=-20.3°, max_angle=20.3°, beam_type=:gaussian)
   rxs = AcousticReceiverGrid2D(0:200:100000, -5000:25:0)
   xloss = transmission_loss(pm, tx, rxs; mode=:coherent)
   @test size(xloss) == (501, 201)
@@ -205,7 +205,7 @@ end
     seabed = FluidBoundary(1.5*water_density(), 1550.0, dBperλ(0.5)))
   tx = AcousticSource((x=0, z=-18), 230.0)
   rxs = AcousticReceiverGrid2D(0:100:100000, -3000:15:0)
-  pm = Bellhop(env; min_angle=-89°, max_angle=89°, gaussian=true)
+  pm = Bellhop(env; min_angle=-89°, max_angle=89°, beam_type=:gaussian)
   xloss = transmission_loss(pm, tx, rxs; mode=:coherent)
   @test size(xloss) == (1001, 201)
   @test xloss[200,50] > 150
