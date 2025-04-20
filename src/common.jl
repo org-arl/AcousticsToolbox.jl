@@ -27,10 +27,10 @@ function _check_err!(err, filename)
 end
 
 function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
-  all(location(tx1).x == 0 for tx1 ∈ tx) || throw(ArgumentError("Transmitters must be at (0, 0, z)"))
-  all(location(tx1).y == 0 for tx1 ∈ tx) || throw(ArgumentError("2D model requires transmitters in the x-z plane"))
-  all(location(rx1).x >= 0 for rx1 ∈ rx) || throw(ArgumentError("Receivers must be in the +x halfspace"))
-  all(location(rx1).y == 0 for rx1 ∈ rx) || throw(ArgumentError("2D model requires receivers in the x-z plane"))
+  all(location(tx1).x == 0 for tx1 ∈ tx) || error("Transmitters must be at (0, 0, z)")
+  all(location(tx1).y == 0 for tx1 ∈ tx) || error("2D model requires transmitters in the x-z plane")
+  all(location(rx1).x >= 0 for rx1 ∈ rx) || error("Receivers must be in the +x halfspace")
+  all(location(rx1).y == 0 for rx1 ∈ rx) || error("2D model requires receivers in the x-z plane")
   xrev = false
   zrev = false
   env = pm.env
@@ -48,7 +48,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     elseif rx isa AcousticReceiverGrid2D
       maxr = maximum(rx.xrange)
     else
-      throw(ArgumentError("Receivers must be on a 2D grid"))
+      error("Receivers must be on a 2D grid")
     end
     ssp = env.soundspeed
     sspi = 'S'
