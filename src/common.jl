@@ -51,24 +51,21 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       throw(ArgumentError("Receivers must be on a 2D grid"))
     end
     ssp = env.soundspeed
-    sspi = "S"
-    ssp isa SampledFieldZ && ssp.interp === :linear && (sspi = "C")
-    surf = env.surface === RigidBoundary ? "R" : env.surface === PressureReleaseBoundary ? "V" : "A"
+    sspi = 'S'
+    ssp isa SampledFieldZ && ssp.interp === :linear && (sspi = 'C')
+    surf = env.surface === RigidBoundary ? 'R' : env.surface === PressureReleaseBoundary ? 'V' : 'A'
     print(io, "'", sspi, surf, "WT")  # bottom attenuation in dB/wavelength, Thorpe volume attenuation
-    if surf == "A"
-      @printf(io, "0.0 %0.6f 0.0 %0.6f %0.6f /\n", env.surface.c, env.surface.ρ / env.density, in_dBperλ(env.surface.δ))
-    end
-    if is_range_dependent(env.altimetry)
+    pm isa Kraken && pm.robust && print(io, ".")
+    if pm isa Bellhop && is_range_dependent(env.altimetry)
       print(io, "*")
       _create_alt_bathy_file(joinpath(dirname, "model.ati"), env.altimetry, (q, p) -> -value(q, p), maxr, f)
     end
     println(io, "'")
-    bathy = env.bathymetry
-    if is_constant(bathy)
-      waterdepth = value(bathy)
-    else
-      waterdepth = maximum(x -> value(bathy, (x, 0, 0)), range(0.0, maxr; length=_recommend_len(maxr, f)))
+    if surf == 'A'
+      @printf(io, "0.0 %0.6f 0.0 %0.6f %0.6f /\n", env.surface.c, env.surface.ρ / env.density, in_dBperλ(env.surface.δ))
     end
+    bathy = env.bathymetry
+    waterdepth = maximum(bathy)
     @printf(io, "%i 0.0 %0.6f\n", (pm isa Kraken ? pm.nmesh : 0), waterdepth)
     if is_constant(ssp)
       @printf(io, "0.0 %0.6f /\n", value(ssp))
@@ -99,7 +96,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     _print_array(io, [-location(tx1).z for tx1 ∈ tx])
     if length(rx) == 1
       _print_array(io, [-location(rx[1]).z])
-      _print_array(io, [maxr / 1000.0])
+      pm isa Kraken || _print_array(io, [maxr / 1000.0])
     elseif rx isa AcousticReceiverGrid2D
       d = reverse(-rx.zrange)
       if first(d) > last(d)
@@ -112,7 +109,9 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
         xrev = true
       end
       _print_array(io, d)
-      _print_array(io, r)
+      pm isa Kraken || _print_array(io, r)
+    else
+      error("Receivers must be on a 2D grid")
     end
     if pm isa Bellhop
       bcode = pm.beam_type == :cartesian ? 'C' : pm.beam_type == :ray_centered ? 'R' : pm.beam_type == :gaussian ? 'B' : 'G'
@@ -165,7 +164,7 @@ function _read_rays(filename)
       length(s) == 0 && break
       aod = parse(Float64, s)
       pts, sb, bb = parse.(Int, split(strip(readline(io)), r" +"))
-      raypath = Vector{PosF64}(undef, pts)
+      raypath = Vector{XYZ{NTuple{3,Float64}}}(undef, pts)
       for k ∈ 1:pts
         eof(io) && break
         x, d = parse.(Float64, split(strip(readline(io)), r" +"))
@@ -178,7 +177,7 @@ function _read_rays(filename)
 end
 
 function _read_arr(filename)
-  arrivals = RayArrival{Float64,Float64,Float64,Float64,Union{Missing,Vector{PosF64}}}[]
+  arrivals = RayArrival{Float64,Float64,Float64,Float64,Union{Missing,Vector{XYZ{NTuple{3,Float64}}}}}[]
   open(filename, "r") do io
     s = strip(readline(io))
     if occursin("2D", s)
