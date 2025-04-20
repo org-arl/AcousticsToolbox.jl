@@ -15,10 +15,10 @@ struct Bellhop{T} <: AbstractRayPropagationModel
   debug::Bool
   function Bellhop(env, nbeams, min_angle, max_angle, beam_type, beam_shift, debug)
     _check_env(Bellhop, env)
-    -π/2 ≤ min_angle ≤ π/2 || throw(ArgumentError("min_angle should be between -π/2 and π/2"))
-    -π/2 ≤ max_angle ≤ π/2 || throw(ArgumentError("max_angle should be between -π/2 and π/2"))
-    min_angle < max_angle || throw(ArgumentError("max_angle should be more than min_angle"))
-    beam_type ∈ (:geometric, :gaussian) || throw(ArgumentError("unknown beam_type type"))
+    -π/2 ≤ min_angle ≤ π/2 || error("min_angle should be between -π/2 and π/2")
+    -π/2 ≤ max_angle ≤ π/2 || error("max_angle should be between -π/2 and π/2")
+    min_angle < max_angle || error("max_angle should be more than min_angle")
+    beam_type ∈ (:geometric, :gaussian) || error("unknown beam_type type")
     new{typeof(env)}(env, max(nbeams, 0), Float32(in_units(u"rad", min_angle)), Float32(in_units(u"rad", max_angle)), beam_type, beam_shift, debug)
   end
 end
@@ -76,7 +76,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
   elseif mode === :semicoherent
     taskcode = 'S'
   else
-    throw(ArgumentError("Unknown mode :" * string(mode)))
+    error("Unknown mode :" * string(mode))
   end
   mktempdir(prefix="bellhop_") do dirname
     xrev, zrev = _write_env(pm, [tx1], rx, dirname; taskcode)
@@ -93,7 +93,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
   elseif mode === :semicoherent
     taskcode = 'S'
   else
-    throw(ArgumentError("Unknown mode :" * string(mode)))
+    error("Unknown mode :" * string(mode))
   end
   mktempdir(prefix="bellhop_") do dirname
     _write_env(pm, [tx1], [rx1], dirname; taskcode)
@@ -139,9 +139,9 @@ function _bellhop(dirname, debug)
 end
 
 function _check_env(::Type{Bellhop}, env)
-  env.seabed isa FluidBoundary || throw(ArgumentError("seabed must be a FluidBoundary"))
-  env.surface isa FluidBoundary || throw(ArgumentError("surface must be a FluidBoundary"))
-  is_range_dependent(env.soundspeed) && throw(ArgumentError("range-dependent soundspeed not supported"))
+  env.seabed isa FluidBoundary || error("seabed must be a FluidBoundary")
+  env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
+  is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
   mktempdir(prefix="bellhop_") do dirname
     try
       bellhop(dirname, false)

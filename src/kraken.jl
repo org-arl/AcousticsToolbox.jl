@@ -18,10 +18,10 @@ struct Kraken{T} <: AbstractModePropagationModel
   debug::Bool
   function Kraken(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
     _check_env(Kraken, env)
-    nmodes ≥ 1 || throw(ArgumentError("number of modes should be positive"))
-    nmesh ≥ 0 || throw(ArgumentError("number of mesh points should be non-negative"))
-    clow ≥ 0.0 || throw(ArgumentError("clow should be non-negative"))
-    chigh > clow || throw(ArgumentError("chigh should be more than clow"))
+    nmodes ≥ 1 || error("number of modes should be positive")
+    nmesh ≥ 0 || error("number of mesh points should be non-negative")
+    clow ≥ 0.0 || error("clow should be non-negative")
+    chigh > clow || error("chigh should be more than clow")
     new{typeof(env)}(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
   end
 end
@@ -73,7 +73,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   elseif mode === :incoherent
     taskcode = 'I'
   else
-    throw(ArgumentError("Unknown mode :" * string(mode)))
+    error("Unknown mode :" * string(mode))
   end
   mktempdir(prefix="kraken_") do dirname
     xrev, zrev = _write_env(pm, [tx1], rx, dirname)
@@ -90,7 +90,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   elseif mode === :incoherent
     taskcode = 'I'
   else
-    throw(ArgumentError("Unknown mode :" * string(mode)))
+    error("Unknown mode :" * string(mode))
   end
   mktempdir(prefix="bellhop_") do dirname
     _write_env(pm, [tx1], [rx1], dirname)
@@ -104,11 +104,11 @@ end
 ### helper functions
 
 function _check_env(::Type{Kraken}, env)
-  env.seabed isa FluidBoundary || throw(ArgumentError("seabed must be a FluidBoundary"))
-  env.surface isa FluidBoundary || throw(ArgumentError("surface must be a FluidBoundary"))
-  is_range_dependent(env.soundspeed) && throw(ArgumentError("range-dependent soundspeed not supported"))
-  is_range_dependent(env.altimetry) && throw(ArgumentError("range-dependent altimetry not supported"))
-  is_range_dependent(env.bathymetry) && throw(ArgumentError("range-dependent bathymetry not supported"))
+  env.seabed isa FluidBoundary || error("seabed must be a FluidBoundary")
+  env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
+  is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
+  is_range_dependent(env.altimetry) && error("range-dependent altimetry not supported")
+  is_range_dependent(env.bathymetry) && error("range-dependent bathymetry not supported")
   mktempdir(prefix="kraken_") do dirname
     try
       kraken(dirname, false)
