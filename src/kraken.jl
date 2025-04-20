@@ -75,13 +75,14 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   else
     error("Unknown mode :" * string(mode))
   end
-  mktempdir(prefix="kraken_") do dirname
+  fld = mktempdir(prefix="kraken_") do dirname
     xrev, zrev = _write_env(pm, [tx1], rx, dirname)
     _kraken(dirname, pm.leaky, pm.debug)
     _write_flp(pm, [tx1], rx, dirname)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
   end
+  fld .* db2amp(spl(tx1))
 end
 
 function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; mode=:coherent)
@@ -92,13 +93,14 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   else
     error("Unknown mode :" * string(mode))
   end
-  mktempdir(prefix="bellhop_") do dirname
+  fld = mktempdir(prefix="bellhop_") do dirname
     _write_env(pm, [tx1], [rx1], dirname)
     _kraken(dirname, pm.leaky, pm.debug)
     _write_flp(pm, [tx1], [rx1], dirname)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
   end
+  fld .* db2amp(spl(tx1))
 end
 
 ### helper functions

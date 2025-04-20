@@ -78,11 +78,12 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
   else
     error("Unknown mode :" * string(mode))
   end
-  mktempdir(prefix="bellhop_") do dirname
+  fld = mktempdir(prefix="bellhop_") do dirname
     xrev, zrev = _write_env(pm, [tx1], rx, dirname; taskcode)
     _bellhop(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
   end
+  fld .* db2amp(spl(tx1))
 end
 
 function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; mode=:coherent)
@@ -95,11 +96,12 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
   else
     error("Unknown mode :" * string(mode))
   end
-  mktempdir(prefix="bellhop_") do dirname
+  fld = mktempdir(prefix="bellhop_") do dirname
     _write_env(pm, [tx1], [rx1], dirname; taskcode)
     _bellhop(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
   end
+  fld .* db2amp(spl(tx1))
 end
 
 """
