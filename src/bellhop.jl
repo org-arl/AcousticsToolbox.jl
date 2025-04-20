@@ -10,14 +10,16 @@ struct Bellhop{T} <: AbstractRayPropagationModel
   nbeams::Int
   min_angle::Float32
   max_angle::Float32
-  gaussian::Bool
+  beam_type::Symbol
+  beam_shift::Bool
   debug::Bool
-  function Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
+  function Bellhop(env, nbeams, min_angle, max_angle, beam_type, beam_shift, debug)
     _check_env(Bellhop, env)
     -π/2 ≤ min_angle ≤ π/2 || throw(ArgumentError("min_angle should be between -π/2 and π/2"))
     -π/2 ≤ max_angle ≤ π/2 || throw(ArgumentError("max_angle should be between -π/2 and π/2"))
     min_angle < max_angle || throw(ArgumentError("max_angle should be more than min_angle"))
-    new{typeof(env)}(env, max(nbeams, 0), Float32(in_units(u"rad", min_angle)), Float32(in_units(u"rad", max_angle)), gaussian, debug)
+    beam_type ∈ (:geometric, :gaussian) || throw(ArgumentError("unknown beam_type type"))
+    new{typeof(env)}(env, max(nbeams, 0), Float32(in_units(u"rad", min_angle)), Float32(in_units(u"rad", max_angle)), beam_type, beam_shift, debug)
   end
 end
 
@@ -30,13 +32,14 @@ Supported keyword arguments:
 - `nbeams`: number of beams to use (default: 0, auto)
 - `min_angle`: minimum beam angle (default: -80°)
 - `max_angle`: maximum beam angle (default: 80°)
-- `gaussian`: use Gaussian beam (default: false)
+- `beam_type`: `geometric` (default) or `gaussian`
+- `beam_shift`: use beam shift (default: false)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Bellhop input and output files.
 This allows manual inspection of the files.
 """
-Bellhop(env; nbeams=0, min_angle=-80°, max_angle=80°, gaussian=false, debug=false) = Bellhop(env, nbeams, min_angle, max_angle, gaussian, debug)
+Bellhop(env; nbeams=0, min_angle=-80°, max_angle=80°, beam_type=:geometric, beam_shift=false, debug=false) = Bellhop(env, nbeams, min_angle, max_angle, beam_type, beam_shift, debug)
 
 Base.show(io::IO, pm::Bellhop) = print(io, "Bellhop(⋯)")
 
