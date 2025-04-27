@@ -168,7 +168,7 @@ function _read_rays(filename)
       for k ∈ 1:pts
         eof(io) && break
         x, d = parse.(Float64, split(strip(readline(io)), r" +"))
-        raypath[k] = (x, 0.0, -d)
+        raypath[k] = (x=x, y=0.0, z=-d)
       end
       push!(rays, RayArrival(NaN64, complex(NaN64, NaN64), sb, bb, -deg2rad(aod), NaN64, raypath))
     end
