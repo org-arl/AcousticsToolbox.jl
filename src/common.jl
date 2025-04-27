@@ -177,7 +177,8 @@ function _read_rays(filename)
 end
 
 function _read_arr(filename)
-  arrivals = RayArrival{Float64,Float64,Float64,Float64,Union{Missing,Vector{XYZ{NTuple{3,Float64}}}}}[]
+  T = XYZ{NTuple{3,Float64}}
+  arrivals = RayArrival{Float64,Float64,Float64,Float64,Vector{T}}[]
   open(filename, "r") do io
     s = strip(readline(io))
     if occursin("2D", s)
@@ -216,7 +217,7 @@ function _read_arr(filename)
             A, ph, tr, ti, aod, aoa = parse.(Float64, v[1:6])
             sb, bb = parse.(Int, v[7:8])
             (A == 0 || isnan(A)) && continue
-            push!(arrivals, eltype(arrivals)(tr, A * cis(deg2rad(ph) - 2π * f * complex(0, ti)), sb, bb, -deg2rad(aod), deg2rad(aoa), missing))
+            push!(arrivals, eltype(arrivals)(tr, A * cis(deg2rad(ph) - 2π * f * complex(0, ti)), sb, bb, -deg2rad(aod), deg2rad(aoa), T[]))
           end
         end
       end
