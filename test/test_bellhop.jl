@@ -3,10 +3,10 @@ using TestItems
 @testitem "bellhop-pekeris-rays+ir" begin
   using UnderwaterAcoustics
   env = UnderwaterEnvironment(bathymetry = 20.0u"m", temperature = 27.0u"°C", salinity = 35.0u"ppt", seabed = SandySilt)
-  pm = Bellhop(env)
+  pm = @inferred Bellhop(env)
   tx = AcousticSource((x=0.0, z=-5.0), 1000.0)
   rx = AcousticReceiver((x=100.0, z=-10.0))
-  arr = arrivals(pm, tx, rx)
+  arr = @inferred arrivals(pm, tx, rx)
   @test arr isa AbstractArray{<:UnderwaterAcoustics.RayArrival}
   @test length(arr) ≥ 6
   @test arr[1].t ≈ 0.0650 atol=0.0001
@@ -23,8 +23,8 @@ using TestItems
   @test all([abs(arr[j].path[end].x - 100) < 2 for j ∈ 1:6])
   @test all([arr[j].path[end].y == 0 for j ∈ 1:6])
   @test all([abs(arr[j].path[end].z + 10) < 1 for j ∈ 1:6])
-  ir1 = impulse_response(pm, tx, rx, 10000.0; abstime=false)
-  ir2 = impulse_response(pm, tx, rx, 10000.0; abstime=true)
+  ir1 = @inferred impulse_response(pm, tx, rx, 10000.0; abstime=false)
+  ir2 = @inferred impulse_response(pm, tx, rx, 10000.0; abstime=true)
   @test length(ir2) ≈ length(ir1) + round(Int, 10000.0 * arr[1].t) atol=1
   @test length(ir2) ≈ round(Int, 10000.0 * arr[end].t) + 1 atol=1
   @test all(abs.(ir1[[round(Int, 10000.0 * (arr[j].t - arr[1].t)) + 1 for j ∈ 1:6]]) .> 0)
@@ -39,50 +39,50 @@ end
   using UnderwaterAcoustics
   env = UnderwaterEnvironment(bathymetry = 20.0u"m", soundspeed = 1500.0u"m/s",
     seabed = FluidBoundary(water_density(), 1500.0u"m/s", 0.0))  # non-reflecting
-  pm = Bellhop(env)
+  pm = @inferred Bellhop(env)
   d = (√1209.0)/4.0
-  x = acoustic_field(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)))
+  x = @inferred acoustic_field(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)))
   @test x isa Complex
   @test abs(x) ≈ 0.0 atol=0.0002
-  x′ = acoustic_field(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)); mode=:incoherent)
+  x′ = @inferred acoustic_field(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)); mode=:incoherent)
   @test x′ isa Complex
   @test imag(x′) == 0.0
   @test abs(x′) > 1/100.0
   d = (√2409.0)/8.0
-  x = acoustic_field(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)))
+  x = @inferred acoustic_field(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)))
   @test abs(x) > abs(x′)
-  y = transmission_loss(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)))
+  y = @inferred transmission_loss(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)))
   @test -10 * log10(abs2(x)) ≈ y atol=0.1
-  x = acoustic_field(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)); mode=:incoherent)
+  x = @inferred acoustic_field(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)); mode=:incoherent)
   @test abs(x) ≈ abs(x′) atol=0.0001
-  y = transmission_loss(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)); mode=:incoherent)
+  y = @inferred transmission_loss(pm, AcousticSource((x=0.0, z=-d), 1000.0), AcousticReceiver((x=100.0, z=-d)); mode=:incoherent)
   @test -10 * log10(abs2(x)) ≈ y atol=0.1
   tx = AcousticSource((x=0.0, z=-5.0), 1000.0)
-  x1 = acoustic_field(pm, tx, AcousticReceiver((x=100.0, z=-5.0)))
-  x2 = acoustic_field(pm, tx, AcousticReceiver((x=100.0, z=-10.0)))
-  x3 = acoustic_field(pm, tx, AcousticReceiver((x=100.0, z=-15.0)))
-  x = acoustic_field(pm, tx, [AcousticReceiver((x=100.0, z=-d)) for d ∈ 5.0:5.0:15.0])
+  x1 = @inferred acoustic_field(pm, tx, AcousticReceiver((x=100.0, z=-5.0)))
+  x2 = @inferred acoustic_field(pm, tx, AcousticReceiver((x=100.0, z=-10.0)))
+  x3 = @inferred acoustic_field(pm, tx, AcousticReceiver((x=100.0, z=-15.0)))
+  x = @inferred acoustic_field(pm, tx, [AcousticReceiver((x=100.0, z=-d)) for d ∈ 5.0:5.0:15.0])
   @test x isa AbstractVector
   @test [x1, x2, x3] == x
-  x = acoustic_field(pm, tx, AcousticReceiverGrid2D(100.0:100.0, -5.0:-5.0:-15.0))
+  x = @inferred acoustic_field(pm, tx, AcousticReceiverGrid2D(100.0:100.0, -5.0:-5.0:-15.0))
   @test x isa AbstractMatrix
   @test size(x) == (1, 3)
   @test [x1 x2 x3] == x
-  x = acoustic_field(pm, tx, AcousticReceiverGrid2D(100.0:10.0:120.0, -5.0:-5.0:-15.0))
+  x = @inferred acoustic_field(pm, tx, AcousticReceiverGrid2D(100.0:10.0:120.0, -5.0:-5.0:-15.0))
   @test x isa AbstractMatrix
   @test size(x) == (3, 3)
   @test [x1, x2, x3] == x[1,:]
-  x1 = transmission_loss(pm, tx, AcousticReceiver(100.0, -5.0))
-  x2 = transmission_loss(pm, tx, AcousticReceiver(100.0, -10.0))
-  x3 = transmission_loss(pm, tx, AcousticReceiver(100.0, -15.0))
-  x = transmission_loss(pm, tx, [AcousticReceiver(100.0, -d) for d ∈ 5.0:5.0:15.0])
+  x1 = @inferred transmission_loss(pm, tx, AcousticReceiver(100.0, -5.0))
+  x2 = @inferred transmission_loss(pm, tx, AcousticReceiver(100.0, -10.0))
+  x3 = @inferred transmission_loss(pm, tx, AcousticReceiver(100.0, -15.0))
+  x = @inferred transmission_loss(pm, tx, [AcousticReceiver(100.0, -d) for d ∈ 5.0:5.0:15.0])
   @test x isa AbstractVector
   @test [x1, x2, x3] == x
-  x = transmission_loss(pm, tx, AcousticReceiverGrid2D(100.0:100.0, -5.0:-5.0:-15.0))
+  x = @inferred transmission_loss(pm, tx, AcousticReceiverGrid2D(100.0:100.0, -5.0:-5.0:-15.0))
   @test x isa AbstractMatrix
   @test size(x) == (1, 3)
   @test [x1 x2 x3] == x
-  x = transmission_loss(pm, tx, AcousticReceiverGrid2D(100.0:10.0:120.0, -5.0:-5.0:-15.0))
+  x = @inferred transmission_loss(pm, tx, AcousticReceiverGrid2D(100.0:10.0:120.0, -5.0:-5.0:-15.0))
   @test x isa AbstractMatrix
   @test size(x) == (3, 3)
   @test [x1, x2, x3] == x[1,:]
@@ -98,10 +98,10 @@ end
        1502.57, 1504.62, 1507.02, 1509.69, 1512.55, 1515.56, 1518.67, 1521.85, 1525.10, 1528.38,
        1531.70, 1535.04, 1538.39, 1541.76, 1545.14, 1548.52, 1551.91]; z=0:-200:-5000),
     seabed = FluidBoundary(water_density(), 1600.0u"m/s", 0.0))
-  pm = Bellhop(env; min_angle=-25°, max_angle=25°, nbeams=5001)
+  pm = @inferred Bellhop(env; min_angle=-25°, max_angle=25°, nbeams=5001)
   tx = AcousticSource((x=0, z=-1000u"m"), 50.0)
   rx = AcousticReceiver((x=100u"km", z=-800u"m"))
-  arr = arrivals(pm, tx, rx)
+  arr = @inferred arrivals(pm, tx, rx)
   @test length(arr) ≥ 10
   @test arr[1].θₛ ≈ deg2rad(-7.6) atol=0.1
   @test arr[1].ns == 0
@@ -163,9 +163,9 @@ end
   @test arr[10].θᵣ ≈ deg2rad(19.1) atol=0.1
   @test arr[10].t ≈ 69036.50 / 1000 atol = 0.0001
   @test arr[10].ϕ ≈ 10^(-101.8/20) * cispi(85.6/180) atol=0.001
-  pm = Bellhop(env; min_angle=-20.3°, max_angle=20.3°, beam_type=:gaussian)
+  pm = @inferred Bellhop(env; min_angle=-20.3°, max_angle=20.3°, beam_type=:gaussian)
   rxs = AcousticReceiverGrid2D(0:200:100000, -5000:25:0)
-  xloss = transmission_loss(pm, tx, rxs; mode=:coherent)
+  xloss = @inferred transmission_loss(pm, tx, rxs; mode=:coherent)
   @test size(xloss) == (501, 201)
   @test minimum(xloss[201:end,:]) ≈ 73.8 atol=0.1
   @test -10 .* log10.(mean(10 .^ (-xloss[201:end,:] ./ 20))) ≈ 44.5 atol=0.1
@@ -194,8 +194,8 @@ end
     seabed = FluidBoundary(1.5*water_density(), 1550.0, dBperλ(0.5)))
   tx = AcousticSource((x=0, z=-18), 230.0)
   rxs = AcousticReceiverGrid2D(0:100:100000, -3000:15:0)
-  pm = Bellhop(env; min_angle=-89°, max_angle=89°, beam_type=:gaussian)
-  xloss = transmission_loss(pm, tx, rxs; mode=:coherent)
+  pm = @inferred Bellhop(env; min_angle=-89°, max_angle=89°, beam_type=:gaussian)
+  xloss = @inferred transmission_loss(pm, tx, rxs; mode=:coherent)
   @test size(xloss) == (1001, 201)
   @test xloss[200,50] > 150
   @test xloss[50,50] ≈ 67.0 atol=0.1
