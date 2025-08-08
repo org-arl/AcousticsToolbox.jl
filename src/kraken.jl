@@ -106,7 +106,7 @@ end
 ### helper functions
 
 function _check_env(::Type{Kraken}, env)
-  env.seabed isa FluidBoundary || error("seabed must be a FluidBoundary")
+  env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || error("seabed must be a FluidBoundary or ElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
   is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
   is_range_dependent(env.altimetry) && error("range-dependent altimetry not supported")
