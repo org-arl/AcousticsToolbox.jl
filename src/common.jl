@@ -42,7 +42,8 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     f = sum(flist) / length(flist)
     maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
     @printf(io, "%0.6f\n", f)
-    println(io, "1")  # number of media
+    nmedia = 1
+    println(io, nmedia)
     if length(rx) == 1
       maxr = location(only(rx)).x
     elseif rx isa AcousticReceiverGrid2D
@@ -87,7 +88,11 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     end
     println(io, "' 0.0")  # bottom roughness = 0
     if env.seabed !== RigidBoundary && env.seabed !== PressureReleaseBoundary
-      @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δ))
+      if env.seabed isa ElasticBoundary
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, env.seabed.cₚ, env.seabed.cₛ, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δₚ), in_dBperλ(env.seabed.δₛ))
+      else
+        @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δ))
+      end
     end
     if pm isa Kraken
       @printf(io, "%0.6f  %0.6f\n", pm.clow, pm.chigh)
