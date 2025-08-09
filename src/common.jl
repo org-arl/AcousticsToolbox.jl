@@ -42,7 +42,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     f = sum(flist) / length(flist)
     maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
     @printf(io, "%0.6f\n", f)
-    nmedia = 1
+    nmedia = env.seabed isa MultilayerElasticBoundary ? length(env.seabed.layers) : 1
     println(io, nmedia)
     if length(rx) == 1
       maxr = location(only(rx)).x
@@ -67,7 +67,13 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     end
     bathy = env.bathymetry
     waterdepth = maximum(bathy)
-    @printf(io, "%i 0.0 %0.6f\n", (pm isa Kraken ? pm.nmesh : 0), waterdepth)
+    if pm isa Kraken
+      λ = maximum(ssp) / f
+      nmesh = ceil(Int, pm.nmesh_per_λ * λ)
+      @printf(io, "%i 0.0 %0.6f\n", nmesh, waterdepth)
+    else
+      @printf(io, "0 0.0 %0.6f\n", waterdepth)
+    end
     if is_constant(ssp)
       @printf(io, "0.0 %0.6f /\n", value(ssp))
       @printf(io, "%0.6f %0.6f /\n", waterdepth, value(ssp))
@@ -81,17 +87,35 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       end
       floor(waterdepth) != waterdepth && @printf(io, "%0.6f %0.6f /\n", waterdepth, ssp(-waterdepth))
     end
-    print(io, env.seabed === RigidBoundary ? "'R" : env.seabed === PressureReleaseBoundary ? "'V" : "'A")
+    if nmedia > 1
+      for l ∈ env.seabed.layers[1:end-1]
+        λ = max(l.cₚ, l.cₛ) / f
+        nmesh = ceil(Int, 2 * pm.nmesh_per_λ * λ)    # Kraken manual recommends double the number of mesh points for elastic media
+        @printf(io, "%i 0.0 %0.6f\n", nmesh, waterdepth + l.h)
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, l.cₚ, l.cₛ, l.ρ / env.density, in_dBperλ(l.δₚ), in_dBperλ(l.δₛ))
+        @printf(io, "%0.6f /\n", waterdepth + l.h)
+        waterdepth += l.h
+      end
+    end
+    seabed = env.seabed
+    if seabed isa MultilayerElasticBoundary
+      l = env.seabed.layers[end]
+      seabed = ElasticBoundary(l.ρ, l.cₚ, l.cₛ, l.δₚ, l.δₛ)
+    end
+    if seabed isa ElasticBoundary && seabed.cₛ == 0
+      seabed = FluidBoundary(seabed.ρ, seabed.cₚ, seabed.δₚ)
+    end
+    print(io, seabed === RigidBoundary ? "'R" : seabed === PressureReleaseBoundary ? "'V" : "'A")
     if is_range_dependent(bathy)
       print(io, "*")
       _create_alt_bathy_file(joinpath(dirname, "model.bty"), bathy, value, maxr, f)
     end
     println(io, "' 0.0")  # bottom roughness = 0
-    if env.seabed !== RigidBoundary && env.seabed !== PressureReleaseBoundary
-      if env.seabed isa ElasticBoundary
-        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, env.seabed.cₚ, env.seabed.cₛ, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δₚ), in_dBperλ(env.seabed.δₛ))
+    if seabed !== RigidBoundary && seabed !== PressureReleaseBoundary
+      if seabed isa ElasticBoundary
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, seabed.cₚ, seabed.cₛ, seabed.ρ / env.density, in_dBperλ(seabed.δₚ), in_dBperλ(seabed.δₛ))
       else
-        @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δ))
+        @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, seabed.c, seabed.ρ / env.density, in_dBperλ(seabed.δ))
       end
     end
     if pm isa Kraken
