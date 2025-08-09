@@ -10,19 +10,19 @@ A propagation model based on the FORTRAN OALIB Kraken model.
 struct Kraken{T} <: AbstractModePropagationModel
   env::T
   nmodes::Int
-  nmesh::Int
+  nmesh_per_λ::Int
   clow::Float32
   chigh::Float32
   leaky::Bool
   robust::Bool
   debug::Bool
-  function Kraken(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
+  function Kraken(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
     _check_env(Kraken, env)
     nmodes ≥ 1 || error("number of modes should be positive")
-    nmesh ≥ 0 || error("number of mesh points should be non-negative")
+    nmesh_per_λ ≥ 0 || error("number of mesh points per wavelength should be non-negative")
     clow ≥ 0.0 || error("clow should be non-negative")
     chigh > clow || error("chigh should be more than clow")
-    new{typeof(env)}(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
+    new{typeof(env)}(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
   end
 end
 
@@ -33,17 +33,17 @@ Create a Kraken propagation model.
 
 Supported keyword arguments:
 - `nmodes`: number of modes to use (default: 9999)
-- `nmesh`: number of mesh points (default: 0, auto)
+- `nmesh_per_λ`: number of mesh points per wavelength (default: 0, auto)
 - `clow`: lower limit of phase speed (default: 0, auto)
 - `chigh`: upper limit of phase speed (default: 1600.0)
 - `leaky`: use KrakenC for leaky modes (default: true)
-- `robust`: use robust (but slow) root finder (default: false)
+- `robust`: use robust (but slow) root finder (default: true)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Kraken input and output files.
 This allows manual inspection of the files.
 """
-Kraken(env; nmodes=9999, nmesh=0, clow=0.0, chigh=1600.0, leaky=true, robust=false, debug=false) = Kraken(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
+Kraken(env; nmodes=9999, nmesh_per_λ=0, clow=0.0, chigh=1600.0, leaky=true, robust=true, debug=false) = Kraken(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
 
 Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 
@@ -106,7 +106,7 @@ end
 ### helper functions
 
 function _check_env(::Type{Kraken}, env)
-  env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || error("seabed must be a FluidBoundary or ElasticBoundary")
+  env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || env.seabed isa MultilayerElasticBoundary || error("seabed must be a FluidBoundary, ElasticBoundary or MultilayerElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
   is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
   is_range_dependent(env.altimetry) && error("range-dependent altimetry not supported")
