@@ -70,7 +70,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     if pm isa Kraken
       λ = maximum(ssp) / f
       nmesh = ceil(Int, pm.nmesh_per_λ * λ)
-      @printf(io, "%i 0.0 %0.6f\n", nmesh, waterdepth)
+      @printf(io, "%i %0.6f %0.6f\n", nmesh, env.surface.σ, waterdepth)
     else
       @printf(io, "0 0.0 %0.6f\n", waterdepth)
     end
@@ -91,7 +91,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       for l ∈ env.seabed.layers[1:end-1]
         λ = max(l.cₚ, l.cₛ) / f
         nmesh = ceil(Int, 2 * pm.nmesh_per_λ * λ)    # Kraken manual recommends double the number of mesh points for elastic media
-        @printf(io, "%i 0.0 %0.6f\n", nmesh, waterdepth + l.h)
+        @printf(io, "%i %0.6f %0.6f\n", nmesh, l.σ, waterdepth + l.h)
         @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, l.cₚ, l.cₛ, l.ρ / env.density, in_dBperλ(l.δₚ), in_dBperλ(l.δₛ))
         @printf(io, "%0.6f /\n", waterdepth + l.h)
         waterdepth += l.h
@@ -110,7 +110,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       print(io, "*")
       _create_alt_bathy_file(joinpath(dirname, "model.bty"), bathy, value, maxr, f)
     end
-    println(io, "' 0.0")  # bottom roughness = 0
+    @printf(io, "' %0.6f\n", seabed.σ)
     if seabed !== RigidBoundary && seabed !== PressureReleaseBoundary
       if seabed isa ElasticBoundary
         @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, seabed.cₚ, seabed.cₛ, seabed.ρ / env.density, in_dBperλ(seabed.δₚ), in_dBperλ(seabed.δₛ))
