@@ -18,6 +18,7 @@ function _check_err!(err, filename)
   output = false
   open(filename) do f
     for s in eachline(f)
+      occursin("WARNING", uppercase(s)) && @warn s
       if output || occursin("ERROR", uppercase(s))
         push!(err, s)
         output = true
