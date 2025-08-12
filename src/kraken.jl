@@ -21,7 +21,7 @@ struct Kraken{T} <: AbstractModePropagationModel
     nmodes ≥ 1 || error("number of modes should be positive")
     nmesh_per_λ ≥ 0 || error("number of mesh points per wavelength should be non-negative")
     clow ≥ 0.0 || error("clow should be non-negative")
-    chigh > clow || error("chigh should be more than clow")
+    chigh ≥ clow || error("chigh should be more than clow")
     new{typeof(env)}(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
   end
 end
@@ -35,15 +35,15 @@ Supported keyword arguments:
 - `nmodes`: number of modes to use (default: 9999)
 - `nmesh_per_λ`: number of mesh points per wavelength (default: 0, auto)
 - `clow`: lower limit of phase speed (default: 0, auto)
-- `chigh`: upper limit of phase speed (default: 1600.0)
+- `chigh`: upper limit of phase speed (default: 2500.0)
 - `leaky`: use KrakenC for leaky modes (default: true)
-- `robust`: use robust (but slow) root finder (default: true)
+- `robust`: use robust (but slow) root finder (default: false)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Kraken input and output files.
 This allows manual inspection of the files.
 """
-Kraken(env; nmodes=9999, nmesh_per_λ=0, clow=0.0, chigh=1600.0, leaky=true, robust=true, debug=false) = Kraken(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
+Kraken(env; nmodes=9999, nmesh_per_λ=0, clow=0.0, chigh=2500.0, leaky=true, robust=false, debug=false) = Kraken(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
 
 Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 
