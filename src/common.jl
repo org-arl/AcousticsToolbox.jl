@@ -90,11 +90,14 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     end
     if nmedia > 1
       for l ∈ env.seabed.layers[1:end-1]
-        λ = max(l.cₚ, l.cₛ) / f
+        ρ₁, ρ₂ = first(l.ρ), last(l.ρ)
+        cₚ₁, cₚ₂ = first(l.cₚ), last(l.cₚ)
+        cₛ₁, cₛ₂ = first(l.cₛ), last(l.cₛ)
+        λ = max(cₚ₁, cₛ₁, cₚ₂, cₛ₂) / f
         nmesh = ceil(Int, 2 * pm.nmesh_per_λ * λ)    # Kraken manual recommends double the number of mesh points for elastic media
         @printf(io, "%i %0.6f %0.6f\n", nmesh, l.σ, waterdepth + l.h)
-        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, l.cₚ, l.cₛ, l.ρ / env.density, in_dBperλ(l.δₚ), in_dBperλ(l.δₛ))
-        @printf(io, "%0.6f /\n", waterdepth + l.h)
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, cₚ₁, cₛ₁, ρ₁ / env.density, in_dBperλ(l.δₚ), in_dBperλ(l.δₛ))
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f /\n", waterdepth + l.h, cₚ₂, cₛ₂, ρ₂ / env.density)
         waterdepth += l.h
       end
     end

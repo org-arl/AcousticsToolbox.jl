@@ -54,6 +54,10 @@ function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, r
     # replace a single receiver with a grid of receivers at λ/10 spacing to sample the modes
     λ = maximum(pm.env.soundspeed) / tx1.frequency
     D = maximum(pm.env.bathymetry)
+    if pm.env.seabed isa MultilayerElasticBoundary
+      # increase depth to include sediment layers
+      D += sum(l -> l.h, pm.env.seabed.layers[1:end-1])
+    end
     rxs = AcousticReceiverGrid2D(rx1.pos.x, range(-D, 0; length=ceil(Int, 10D/λ + 1)))
     _write_env(pm, [tx1], rxs, dirname)
     _kraken(dirname, pm.leaky, pm.debug)
@@ -198,11 +202,8 @@ function _read_mod(pm::Kraken, dirname)
     nfreq = read(f, UInt32) |> Int
     @assert nfreq == 1              # supports only one frequency
     nmedia = read(f, UInt32) |> Int
-    @assert nmedia == 1             # supports only one medium
     ntot = read(f, UInt32) |> Int
     nmat = read(f, UInt32) |> Int
-    seek(f, 2reclen)
-    _, ρ = read!(f, zeros(Float32, 2, nmedia))
     seek(f, 4reclen)
     depths = read!(f, zeros(Float32, ntot))
     seek(f, 5reclen)
