@@ -79,8 +79,10 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       @printf(io, "0.0 %0.6f /\n", value(ssp))
       @printf(io, "%0.6f %0.6f /\n", waterdepth, value(ssp))
     elseif ssp isa SampledFieldZ
-      for z ∈ ssp.zrange
+      zrange = sort!(vcat(collect(ssp.zrange), -waterdepth); rev=true)
+      for z ∈ zrange
         @printf(io, "%0.6f %0.6f /\n", -z, ssp(z))
+        z == -waterdepth && break
       end
     else
       for d ∈ range(0.0, waterdepth; length=_recommend_len(waterdepth, f))
