@@ -53,8 +53,8 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       error("Receivers must be on a 2D grid")
     end
     ssp = env.soundspeed
-    sspi = 'S'
-    ssp isa SampledFieldZ && ssp.interp === :linear && (sspi = 'C')
+    sspi = 'C'
+    ssp isa SampledFieldZ && ssp.interp === :cubic && (sspi = 'S')
     surf = env.surface === RigidBoundary ? 'R' : env.surface === PressureReleaseBoundary ? 'V' : 'A'
     print(io, "'", sspi, surf, "WT")  # bottom attenuation in dB/wavelength, Thorpe volume attenuation
     pm isa Kraken && pm.robust && print(io, ".")
