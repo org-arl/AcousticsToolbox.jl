@@ -33,9 +33,9 @@ Create a Kraken propagation model.
 
 Supported keyword arguments:
 - `nmodes`: number of modes to use (default: 9999)
-- `nmesh_per_λ`: number of mesh points per wavelength (default: 0, auto)
-- `clow`: lower limit of phase speed (default: 0, auto)
-- `chigh`: upper limit of phase speed (default: 2500.0)
+- `nmesh_per_λ`: number of mesh points per wavelength (default: 0, 0=auto)
+- `clow`: lower limit of phase speed (default: 1300, 0=auto)
+- `chigh`: upper limit of phase speed (default: 2500)
 - `leaky`: use KrakenC for leaky modes (default: true)
 - `robust`: use robust (but slow) root finder (default: false)
 - `debug`: debug mode (default: false)
@@ -43,7 +43,7 @@ Supported keyword arguments:
 Enabling debug mode will create a temporary directory with the Kraken input and output files.
 This allows manual inspection of the files.
 """
-Kraken(env; nmodes=9999, nmesh_per_λ=0, clow=0.0, chigh=2500.0, leaky=true, robust=false, debug=false) = Kraken(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
+Kraken(env; nmodes=9999, nmesh_per_λ=0, clow=1300.0, chigh=2500.0, leaky=true, robust=false, debug=false) = Kraken(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
 
 Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 
@@ -64,9 +64,10 @@ function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, r
     ϕ, kᵣ, depths = _read_mod(pm, dirname)    # read mode shapes
     m, k, v = _read_grp(pm, dirname)          # read group velocity
     vs = SampledField(v; x=k)                 # interpolate group velocity
-    map(eachindex(kᵣ)) do i
+    ω = 2π * tx1.frequency
+    map(1:min(length(kᵣ), pm.nmodes)) do i
       ψ = SampledField(ϕ[:,i]; z=-depths)
-      ModeArrival(i, kᵣ[i], ψ, vs(real(kᵣ[i])))
+      ModeArrival(i, kᵣ[i], ψ, vs(real(kᵣ[i])), ω/real(kᵣ[i]))
     end
   end
 end

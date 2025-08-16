@@ -71,7 +71,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     end
     if pm isa Kraken
       λ = maximum(ssp) / f
-      nmesh = ceil(Int, pm.nmesh_per_λ * λ)
+      nmesh = ceil(Int, waterdepth / λ * pm.nmesh_per_λ)
       @printf(io, "%i %0.6f %0.6f\n", nmesh, env.surface.σ, waterdepth)
     else
       @printf(io, "0 0.0 %0.6f\n", waterdepth)
@@ -97,7 +97,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
         cₚ₁, cₚ₂ = first(l.cₚ), last(l.cₚ)
         cₛ₁, cₛ₂ = first(l.cₛ), last(l.cₛ)
         λ = max(cₚ₁, cₛ₁, cₚ₂, cₛ₂) / f
-        nmesh = ceil(Int, 2 * pm.nmesh_per_λ * λ)    # Kraken manual recommends double the number of mesh points for elastic media
+        nmesh = ceil(Int, 2 * l.h / λ * pm.nmesh_per_λ)    # Kraken manual recommends double the number of mesh points for elastic media
         @printf(io, "%i %0.6f %0.6f\n", nmesh, l.σ, waterdepth + l.h)
         @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, cₚ₁, cₛ₁, ρ₁ / env.density, in_dBperλ(l.δₚ), in_dBperλ(l.δₛ))
         @printf(io, "%0.6f %0.6f %0.6f %0.6f /\n", waterdepth + l.h, cₚ₂, cₛ₂, ρ₂ / env.density)
