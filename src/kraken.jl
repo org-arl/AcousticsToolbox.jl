@@ -52,22 +52,31 @@ Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
   mktempdir(prefix="kraken_") do dirname
     # replace a single receiver with a grid of receivers at λ/10 spacing to sample the modes
-    λ = maximum(pm.env.soundspeed) / tx1.frequency
+    max_c = maximum(pm.env.soundspeed)
+    λ = max_c / tx1.frequency
     D = maximum(pm.env.bathymetry)
     if pm.env.seabed isa MultilayerElasticBoundary
       # increase depth to include sediment layers
       D += sum(l -> l.h, pm.env.seabed.layers[1:end-1])
+      max_c = max(max_c, maximum(l -> max(maximum(l.cₚ), maximum(l.cₛ)), pm.env.seabed.layers[1:end-1]))
     end
     rxs = AcousticReceiverGrid2D(rx1.pos.x, range(-D, 0; length=ceil(Int, 10D/λ + 1)))
     _write_env(pm, [tx1], rxs, dirname)
     _kraken(dirname, pm.leaky, pm.debug)
     ϕ, kᵣ, depths = _read_mod(pm, dirname)    # read mode shapes
     m, k, v = _read_grp(pm, dirname)          # read group velocity
-    vs = SampledField(v; x=k)                 # interpolate group velocity
+    if all(0 .≤ v .≤ max_c)
+      vs = SampledField(v; x=k)               # interpolate group velocity
+      v = map(k -> vs(real(k)), kᵣ)
+    else
+      # replace invalid velocities by missing since KRAKEN gives zeros
+      # and KRAKENC gives invalid values for multilayered elastic seabeds
+      v = fill(missing, length(kᵣ))
+    end
     ω = 2π * tx1.frequency
     map(1:min(length(kᵣ), pm.nmodes)) do i
       ψ = SampledField(ϕ[:,i]; z=-depths)
-      ModeArrival(i, kᵣ[i], ψ, vs(real(kᵣ[i])), ω/real(kᵣ[i]))
+      ModeArrival(i, kᵣ[i], ψ, v[i], ω/real(kᵣ[i]))
     end
   end
 end
