@@ -83,7 +83,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   fld = mktempdir(prefix="kraken_") do dirname
     xrev, zrev = _write_env(pm, [tx1], rx, dirname)
     _kraken(dirname, pm.leaky, pm.debug)
-    _write_flp(pm, [tx1], rx, dirname)
+    _write_flp(pm, [tx1], rx, dirname, mode)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
   end
@@ -101,7 +101,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   fld = mktempdir(prefix="bellhop_") do dirname
     _write_env(pm, [tx1], [rx1], dirname)
     _kraken(dirname, pm.leaky, pm.debug)
-    _write_flp(pm, [tx1], [rx1], dirname)
+    _write_flp(pm, [tx1], [rx1], dirname, mode)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
   end
@@ -167,11 +167,13 @@ function _field(dirname, debug)
   end
 end
 
-function _write_flp(pm::Kraken, tx, rx, dirname)
+function _write_flp(pm::Kraken, tx, rx, dirname, mode)
   filename = joinpath(dirname, "model.flp")
   open(filename, "w") do io
     println(io, "/")                # take title from modes file
-    println(io, "'RA'")             # point source, adiabatic modes
+    print(io, "'RA ")               # point source, adiabatic modes
+    print(io, mode == :incoherent ? 'I' : 'C')
+    println(io, "'")
     @printf(io, "%i\n", pm.nmodes)  # maximum number of modes to use
     println(io, "1")                # number of profiles (for range dependence)
     println(io, "0.0")              # range (km) of first profile
