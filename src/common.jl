@@ -56,18 +56,19 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     sspi = 'C'
     ssp isa SampledFieldZ && ssp.interp === :cubic && (sspi = 'S')
     surf = env.surface === RigidBoundary ? 'R' : env.surface === PressureReleaseBoundary ? 'V' : 'A'
-    print(io, "'", sspi, surf, "WT")  # bottom attenuation in dB/wavelength, Thorpe volume attenuation
+    print(io, "'", sspi, surf, "WF")  # bottom attenuation in dB/wavelength, Francois-Garrison volume attenuation
     pm isa Kraken && pm.robust && print(io, ".")
     if pm isa Bellhop && is_range_dependent(env.altimetry)
       print(io, "*")
       _create_alt_bathy_file(joinpath(dirname, "model.ati"), env.altimetry, (q, p) -> -value(q, p), maxr, f)
     end
     println(io, "'")
+    bathy = env.bathymetry
+    waterdepth = maximum(bathy)
+    @printf(io, "%0.1f %0.1f %0.1f %0.1f\n", env.temperature, env.salinity, env.pH, waterdepth/2)
     if surf == 'A'
       @printf(io, "0.0 %0.6f 0.0 %0.6f %0.6f /\n", env.surface.c, env.surface.ρ / env.density, in_dBperλ(env.surface.δ))
     end
-    bathy = env.bathymetry
-    waterdepth = maximum(bathy)
     if pm isa Kraken
       λ = maximum(ssp) / f
       nmesh = ceil(Int, pm.nmesh_per_λ * λ)
