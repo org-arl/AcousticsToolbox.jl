@@ -21,7 +21,7 @@ struct Kraken{T} <: AbstractModePropagationModel
     nmodes ≥ 1 || error("number of modes should be positive")
     nmesh_per_λ ≥ 0 || error("number of mesh points per wavelength should be non-negative")
     clow ≥ 0.0 || error("clow should be non-negative")
-    chigh ≥ clow || error("chigh should be more than clow")
+    chigh > clow || error("chigh should be more than clow")
     new{typeof(env)}(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
   end
 end
