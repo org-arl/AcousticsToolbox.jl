@@ -59,6 +59,10 @@ function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, r
       # increase depth to include sediment layers
       D += sum(l -> l.h, pm.env.seabed.layers[1:end-1])
       max_c = max(max_c, maximum(l -> max(maximum(l.cₚ), maximum(l.cₛ)), pm.env.seabed.layers[1:end-1]))
+    elseif pm.env.seabed isa ElasticBoundary
+      max_c = max(max_c, maximum(pm.env.seabed.cₚ), maximum(pm.env.seabed.cₛ))
+    else
+      max_c = max(max_c, maximum(pm.env.seabed.c))
     end
     rxs = AcousticReceiverGrid2D(rx1.pos.x, range(-D, 0; length=ceil(Int, 10D/λ + 1)))
     _write_env(pm, [tx1], rxs, dirname)
