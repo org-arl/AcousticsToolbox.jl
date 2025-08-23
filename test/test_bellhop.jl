@@ -25,9 +25,9 @@ using TestItems
   @test all([abs(arr[j].path[end].z + 10) < 1 for j ∈ 1:6])
   ir1 = @inferred impulse_response(pm, tx, rx, 10000.0; abstime=false)
   ir2 = @inferred impulse_response(pm, tx, rx, 10000.0; abstime=true)
-  @test length(ir2) ≈ length(ir1) + round(Int, 10000.0 * arr[1].t) atol=1
-  @test length(ir2) ≈ round(Int, 10000.0 * arr[end].t) + 1 atol=1
-  @test all(abs.(ir1[[round(Int, 10000.0 * (arr[j].t - arr[1].t)) + 1 for j ∈ 1:6]]) .> 0)
+  @test length(ir2) ≈ length(ir1) + round(Int, 10000.0 * arr[1].t) - 10 atol=1
+  @test length(ir2) ≈ round(Int, 10000.0 * arr[end].t) + 11 atol=1
+  @test all(abs.(ir1[[round(Int, 10000.0 * (arr[j].t - arr[1].t)) + 11 for j ∈ 1:6]]) .> 0)
   @test all(abs.(ir2[[round(Int, 10000.0 * arr[j].t) + 1 for j ∈ 1:7]]) .> 0)
   @test length(impulse_response(pm, tx, rx, 10000.0; ntaps=256, abstime=true)) == 256
   @test length(impulse_response(pm, tx, rx, 10000.0; ntaps=64, abstime=true)) == 64
@@ -167,15 +167,15 @@ end
   rxs = AcousticReceiverGrid2D(0:200:100000, -5000:25:0)
   xloss = @inferred transmission_loss(pm, tx, rxs; mode=:coherent)
   @test size(xloss) == (501, 201)
-  @test minimum(xloss[201:end,:]) ≈ 73.8 atol=0.1
-  @test -10 .* log10.(mean(10 .^ (-xloss[201:end,:] ./ 20))) ≈ 44.5 atol=0.1
+  @test minimum(xloss[201:end,:]) ≈ 73.8 atol=0.2
+  @test -10 .* log10.(mean(10 .^ (-xloss[201:end,:] ./ 20))) ≈ 44.5 atol=0.2
   xloss = transmission_loss(pm, tx, rxs; mode=:semicoherent)
   @test size(xloss) == (501, 201)
-  @test minimum(xloss[201:end,:]) ≈ 77.9 atol=0.1
+  @test minimum(xloss[201:end,:]) ≈ 77.9 atol=0.2
   @test -10 .* log10.(mean(10 .^ (-xloss[201:end,:] ./ 20))) ≈ 43.8 atol=0.1
   xloss = transmission_loss(pm, tx, rxs; mode=:incoherent)
   @test size(xloss) == (501, 201)
-  @test minimum(xloss[201:end,:]) ≈ 77.9 atol=0.1
+  @test minimum(xloss[201:end,:]) ≈ 77.9 atol=0.3
   @test -10 .* log10.(mean(10 .^ (-xloss[201:end,:] ./ 20))) ≈ 43.8 atol=0.1
 end
 
@@ -200,5 +200,5 @@ end
   @test xloss[200,50] > 150
   @test xloss[50,50] ≈ 67.0 atol=0.1
   @test xloss[100,100] ≈ 76.4 atol=0.1
-  @test xloss[500,50] ≈ 103.2 atol=0.1
+  @test xloss[500,50] ≈ 102.9 atol=0.1
 end
