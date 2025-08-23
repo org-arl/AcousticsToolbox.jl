@@ -80,7 +80,7 @@ function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, r
     ω = 2π * tx1.frequency
     map(1:min(length(kᵣ), pm.nmodes)) do i
       ψ = SampledField(ϕ[:,i]; z=-depths)
-      ModeArrival(i, kᵣ[i], ψ, v[i], ω/real(kᵣ[i]))
+      ModeArrival{ComplexF64,typeof(ψ),Union{Missing,Float64},Float64}(i, kᵣ[i], ψ, v[i], ω/real(kᵣ[i]))
     end
   end
 end
