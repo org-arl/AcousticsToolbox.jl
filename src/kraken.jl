@@ -100,7 +100,8 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
   end
-  fld .* db2amp(spl(tx1))
+  # conjugation required because Kraken uses the convention of cis(-kᵣR)
+  conj.(fld .* db2amp(spl(tx1)))
 end
 
 function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; mode=:coherent)
@@ -118,7 +119,8 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
   end
-  fld .* db2amp(spl(tx1))
+  # conjugation required because Kraken uses the convention of cis(-kᵣR)
+  conj(fld * db2amp(spl(tx1)))
 end
 
 ### helper functions
