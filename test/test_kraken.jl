@@ -10,8 +10,8 @@ using TestItems
   )
   tx = @inferred AcousticSource(0, -500, 10)
   rx = @inferred AcousticReceiver(200000, -2500)
-  for leaky ∈ [false, true]
-    pm = @inferred Kraken(env; chigh=2000, leaky)
+  for complex_solver ∈ [false, true]
+    pm = @inferred Kraken(env; chigh=2000, complex_solver)
     m = @inferred arrivals(pm, tx, rx)
     @test m isa Vector{<:UnderwaterAcoustics.ModeArrival}
     pm1 = @inferred PekerisModeSolver(env)
