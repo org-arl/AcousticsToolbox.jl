@@ -19,7 +19,7 @@ struct Kraken{T} <: AbstractModePropagationModel
   function Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
     _check_env(Kraken, env)
     nmodes ≥ 1 || error("number of modes should be positive")
-    mesh_density ≥ 0 || error("number of mesh points per wavelength should be non-negative")
+    mesh_density ≥ 0 || error("mesh density should be non-negative")
     clow ≥ 0.0 || error("clow should be non-negative")
     chigh > clow || error("chigh should be more than clow")
     new{typeof(env)}(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
