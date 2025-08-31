@@ -10,19 +10,19 @@ A propagation model based on the FORTRAN OALIB Kraken model.
 struct Kraken{T} <: AbstractModePropagationModel
   env::T
   nmodes::Int
-  nmesh_per_λ::Int
+  mesh_density::Float32
   clow::Float32
   chigh::Float32
-  leaky::Bool
+  complex_solver::Bool
   robust::Bool
   debug::Bool
-  function Kraken(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
+  function Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
     _check_env(Kraken, env)
     nmodes ≥ 1 || error("number of modes should be positive")
-    nmesh_per_λ ≥ 0 || error("number of mesh points per wavelength should be non-negative")
+    mesh_density ≥ 0 || error("number of mesh points per wavelength should be non-negative")
     clow ≥ 0.0 || error("clow should be non-negative")
     chigh > clow || error("chigh should be more than clow")
-    new{typeof(env)}(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
+    new{typeof(env)}(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
   end
 end
 
@@ -33,17 +33,17 @@ Create a Kraken propagation model.
 
 Supported keyword arguments:
 - `nmodes`: number of modes to use (default: 9999)
-- `nmesh_per_λ`: number of mesh points per wavelength (default: 0, 0=auto)
+- `mesh_density`: number of mesh points per wavelength (default: 0, 0=auto)
 - `clow`: lower limit of phase speed (default: 1300, 0=auto)
 - `chigh`: upper limit of phase speed (default: 2500)
-- `leaky`: use KrakenC for leaky modes (default: true)
+- `complex_solver`: use KrakenC for finding modes (default: true)
 - `robust`: use robust (but slow) root finder (default: false)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Kraken input and output files.
 This allows manual inspection of the files.
 """
-Kraken(env; nmodes=9999, nmesh_per_λ=0, clow=1300.0, chigh=2500.0, leaky=true, robust=false, debug=false) = Kraken(env, nmodes, nmesh_per_λ, clow, chigh, leaky, robust, debug)
+Kraken(env; nmodes=9999, mesh_density=0, clow=1300.0, chigh=2500.0, complex_solver=true, robust=false, debug=false) = Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
 
 Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 
@@ -66,7 +66,7 @@ function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, r
     end
     rxs = AcousticReceiverGrid2D(rx1.pos.x, range(-D, 0; length=ceil(Int, 10D/λ + 1)))
     _write_env(pm, [tx1], rxs, dirname)
-    _kraken(dirname, pm.leaky, pm.debug)
+    _kraken(dirname, pm.complex_solver, pm.debug)
     ϕ, kᵣ, depths = _read_mod(pm, dirname)    # read mode shapes
     m, k, v = _read_grp(pm, dirname)          # read group velocity
     if all(0 .≤ v .≤ max_c)
@@ -95,7 +95,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   end
   fld = mktempdir(prefix="kraken_") do dirname
     xrev, zrev = _write_env(pm, [tx1], rx, dirname)
-    _kraken(dirname, pm.leaky, pm.debug)
+    _kraken(dirname, pm.complex_solver, pm.debug)
     _write_flp(pm, [tx1], rx, dirname, mode)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
@@ -114,7 +114,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   end
   fld = mktempdir(prefix="bellhop_") do dirname
     _write_env(pm, [tx1], [rx1], dirname)
-    _kraken(dirname, pm.leaky, pm.debug)
+    _kraken(dirname, pm.complex_solver, pm.debug)
     _write_flp(pm, [tx1], [rx1], dirname, mode)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
@@ -142,11 +142,11 @@ function _check_env(::Type{Kraken}, env)
   nothing
 end
 
-function _kraken(dirname, leaky, debug)
+function _kraken(dirname, complex_solver, debug)
   infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(ignorestatus(`$(leaky ? KRAKENC[] : KRAKEN[]) $infilebase`); stdout=outfilename, stderr=outfilename))
+    run(pipeline(ignorestatus(`$(complex_solver ? KRAKENC[] : KRAKEN[]) $infilebase`); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Kraken run completed in $dirname, press ENTER to delete intermediate files..."
       readline()
