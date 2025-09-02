@@ -10,19 +10,19 @@ A propagation model based on the FORTRAN OALIB Kraken model.
 struct Kraken{T} <: AbstractModePropagationModel
   env::T
   nmodes::Int
-  nmesh::Int
+  mesh_density::Float32
   clow::Float32
   chigh::Float32
-  leaky::Bool
+  complex_solver::Bool
   robust::Bool
   debug::Bool
-  function Kraken(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
+  function Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
     _check_env(Kraken, env)
     nmodes ≥ 1 || error("number of modes should be positive")
-    nmesh ≥ 0 || error("number of mesh points should be non-negative")
+    mesh_density ≥ 0 || error("mesh density should be non-negative")
     clow ≥ 0.0 || error("clow should be non-negative")
     chigh > clow || error("chigh should be more than clow")
-    new{typeof(env)}(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
+    new{typeof(env)}(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
   end
 end
 
@@ -33,17 +33,17 @@ Create a Kraken propagation model.
 
 Supported keyword arguments:
 - `nmodes`: number of modes to use (default: 9999)
-- `nmesh`: number of mesh points (default: 0, auto)
-- `clow`: lower limit of phase speed (default: 0, auto)
-- `chigh`: upper limit of phase speed (default: 1600.0)
-- `leaky`: use KrakenC for leaky modes (default: true)
+- `mesh_density`: number of mesh points per wavelength (default: 0, 0=auto)
+- `clow`: lower limit of phase speed (default: 1300, 0=auto)
+- `chigh`: upper limit of phase speed (default: 2500)
+- `complex_solver`: use KrakenC for finding modes (default: true)
 - `robust`: use robust (but slow) root finder (default: false)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Kraken input and output files.
 This allows manual inspection of the files.
 """
-Kraken(env; nmodes=9999, nmesh=0, clow=0.0, chigh=1600.0, leaky=true, robust=false, debug=false) = Kraken(env, nmodes, nmesh, clow, chigh, leaky, robust, debug)
+Kraken(env; nmodes=9999, mesh_density=0, clow=1300.0, chigh=2500.0, complex_solver=true, robust=false, debug=false) = Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
 
 Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 
@@ -52,17 +52,35 @@ Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
   mktempdir(prefix="kraken_") do dirname
     # replace a single receiver with a grid of receivers at λ/10 spacing to sample the modes
-    λ = maximum(pm.env.soundspeed) / tx1.frequency
+    max_c = maximum(pm.env.soundspeed)
+    λ = max_c / tx1.frequency
     D = maximum(pm.env.bathymetry)
+    if pm.env.seabed isa MultilayerElasticBoundary
+      # increase depth to include sediment layers
+      D += sum(l -> l.h, pm.env.seabed.layers[1:end-1])
+      max_c = 2 * max(max_c, maximum(l -> max(maximum(l.cₚ), maximum(l.cₛ)), pm.env.seabed.layers[1:end-1]))
+    elseif pm.env.seabed isa ElasticBoundary
+      max_c = 2 * max(max_c, maximum(pm.env.seabed.cₚ), maximum(pm.env.seabed.cₛ))
+    else
+      max_c = 2 * max(max_c, maximum(pm.env.seabed.c))
+    end
     rxs = AcousticReceiverGrid2D(rx1.pos.x, range(-D, 0; length=ceil(Int, 10D/λ + 1)))
     _write_env(pm, [tx1], rxs, dirname)
-    _kraken(dirname, pm.leaky, pm.debug)
+    _kraken(dirname, pm.complex_solver, pm.debug)
     ϕ, kᵣ, depths = _read_mod(pm, dirname)    # read mode shapes
     m, k, v = _read_grp(pm, dirname)          # read group velocity
-    vs = SampledField(v; x=k)                 # interpolate group velocity
-    map(eachindex(kᵣ)) do i
+    if all(0 .≤ v .≤ max_c)
+      vs = SampledField(v; x=k)               # interpolate group velocity
+      v = map(k -> vs(real(k)), kᵣ)
+    else
+      # replace invalid velocities by missing since KRAKEN gives zeros
+      # and KRAKENC gives invalid values for multilayered elastic seabeds
+      v = fill(missing, length(kᵣ))
+    end
+    ω = 2π * tx1.frequency
+    map(1:min(length(kᵣ), pm.nmodes)) do i
       ψ = SampledField(ϕ[:,i]; z=-depths)
-      ModeArrival(i, kᵣ[i], ψ, vs(real(kᵣ[i])))
+      ModeArrival{ComplexF64,typeof(ψ),Union{Missing,Float64},Float64}(i, kᵣ[i], ψ, v[i], ω/real(kᵣ[i]))
     end
   end
 end
@@ -77,12 +95,13 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   end
   fld = mktempdir(prefix="kraken_") do dirname
     xrev, zrev = _write_env(pm, [tx1], rx, dirname)
-    _kraken(dirname, pm.leaky, pm.debug)
-    _write_flp(pm, [tx1], rx, dirname)
+    _kraken(dirname, pm.complex_solver, pm.debug)
+    _write_flp(pm, [tx1], rx, dirname, mode)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
   end
-  fld .* db2amp(spl(tx1))
+  # conjugation required because Kraken uses the convention of cis(-kᵣR)
+  conj.(fld .* db2amp(spl(tx1)))
 end
 
 function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; mode=:coherent)
@@ -95,18 +114,19 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   end
   fld = mktempdir(prefix="bellhop_") do dirname
     _write_env(pm, [tx1], [rx1], dirname)
-    _kraken(dirname, pm.leaky, pm.debug)
-    _write_flp(pm, [tx1], [rx1], dirname)
+    _kraken(dirname, pm.complex_solver, pm.debug)
+    _write_flp(pm, [tx1], [rx1], dirname, mode)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
   end
-  fld .* db2amp(spl(tx1))
+  # conjugation required because Kraken uses the convention of cis(-kᵣR)
+  conj(fld * db2amp(spl(tx1)))
 end
 
 ### helper functions
 
 function _check_env(::Type{Kraken}, env)
-  env.seabed isa FluidBoundary || error("seabed must be a FluidBoundary")
+  env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || env.seabed isa MultilayerElasticBoundary || error("seabed must be a FluidBoundary, ElasticBoundary or MultilayerElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
   is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
   is_range_dependent(env.altimetry) && error("range-dependent altimetry not supported")
@@ -122,11 +142,11 @@ function _check_env(::Type{Kraken}, env)
   nothing
 end
 
-function _kraken(dirname, leaky, debug)
+function _kraken(dirname, complex_solver, debug)
   infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(ignorestatus(`$(leaky ? KRAKENC[] : KRAKEN[]) $infilebase`); stdout=outfilename, stderr=outfilename))
+    run(pipeline(ignorestatus(`$(complex_solver ? KRAKENC[] : KRAKEN[]) $infilebase`); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Kraken run completed in $dirname, press ENTER to delete intermediate files..."
       readline()
@@ -162,11 +182,13 @@ function _field(dirname, debug)
   end
 end
 
-function _write_flp(pm::Kraken, tx, rx, dirname)
+function _write_flp(pm::Kraken, tx, rx, dirname, mode)
   filename = joinpath(dirname, "model.flp")
   open(filename, "w") do io
     println(io, "/")                # take title from modes file
-    println(io, "'RA'")             # point source, adiabatic modes
+    print(io, "'RA ")               # point source, adiabatic modes
+    print(io, mode == :incoherent ? 'I' : 'C')
+    println(io, "'")
     @printf(io, "%i\n", pm.nmodes)  # maximum number of modes to use
     println(io, "1")                # number of profiles (for range dependence)
     println(io, "0.0")              # range (km) of first profile
@@ -198,11 +220,8 @@ function _read_mod(pm::Kraken, dirname)
     nfreq = read(f, UInt32) |> Int
     @assert nfreq == 1              # supports only one frequency
     nmedia = read(f, UInt32) |> Int
-    @assert nmedia == 1             # supports only one medium
     ntot = read(f, UInt32) |> Int
     nmat = read(f, UInt32) |> Int
-    seek(f, 2reclen)
-    _, ρ = read!(f, zeros(Float32, 2, nmedia))
     seek(f, 4reclen)
     depths = read!(f, zeros(Float32, ntot))
     seek(f, 5reclen)

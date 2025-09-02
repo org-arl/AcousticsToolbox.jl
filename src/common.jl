@@ -18,6 +18,7 @@ function _check_err!(err, filename)
   output = false
   open(filename) do f
     for s in eachline(f)
+      occursin("WARNING", uppercase(s)) && @warn s
       if output || occursin("ERROR", uppercase(s))
         push!(err, s)
         output = true
@@ -42,7 +43,8 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
     f = sum(flist) / length(flist)
     maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
     @printf(io, "%0.6f\n", f)
-    println(io, "1")  # number of media
+    nmedia = env.seabed isa MultilayerElasticBoundary ? length(env.seabed.layers) : 1
+    println(io, nmedia)
     if length(rx) == 1
       maxr = location(only(rx)).x
     elseif rx isa AcousticReceiverGrid2D
@@ -51,28 +53,37 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       error("Receivers must be on a 2D grid")
     end
     ssp = env.soundspeed
-    sspi = 'S'
-    ssp isa SampledFieldZ && ssp.interp === :linear && (sspi = 'C')
+    sspi = 'C'
+    ssp isa SampledFieldZ && ssp.interp === :cubic && (sspi = 'S')
     surf = env.surface === RigidBoundary ? 'R' : env.surface === PressureReleaseBoundary ? 'V' : 'A'
-    print(io, "'", sspi, surf, "WT")  # bottom attenuation in dB/wavelength, Thorpe volume attenuation
+    print(io, "'", sspi, surf, "WF")  # bottom attenuation in dB/wavelength, Francois-Garrison volume attenuation
     pm isa Kraken && pm.robust && print(io, ".")
     if pm isa Bellhop && is_range_dependent(env.altimetry)
       print(io, "*")
       _create_alt_bathy_file(joinpath(dirname, "model.ati"), env.altimetry, (q, p) -> -value(q, p), maxr, f)
     end
     println(io, "'")
+    bathy = env.bathymetry
+    waterdepth = maximum(bathy)
+    @printf(io, "%0.1f %0.1f %0.1f %0.1f\n", env.temperature, env.salinity, env.pH, waterdepth/2)
     if surf == 'A'
       @printf(io, "0.0 %0.6f 0.0 %0.6f %0.6f /\n", env.surface.c, env.surface.ρ / env.density, in_dBperλ(env.surface.δ))
     end
-    bathy = env.bathymetry
-    waterdepth = maximum(bathy)
-    @printf(io, "%i 0.0 %0.6f\n", (pm isa Kraken ? pm.nmesh : 0), waterdepth)
+    if pm isa Kraken
+      λ = maximum(ssp) / f
+      nmesh = round(Int, waterdepth / λ * pm.mesh_density)
+      @printf(io, "%i %0.6f %0.6f\n", nmesh, env.surface.σ, waterdepth)
+    else
+      @printf(io, "0 0.0 %0.6f\n", waterdepth)
+    end
     if is_constant(ssp)
       @printf(io, "0.0 %0.6f /\n", value(ssp))
       @printf(io, "%0.6f %0.6f /\n", waterdepth, value(ssp))
     elseif ssp isa SampledFieldZ
-      for z ∈ ssp.zrange
+      zrange = sort!(vcat(collect(ssp.zrange), -waterdepth); rev=true)
+      for z ∈ zrange
         @printf(io, "%0.6f %0.6f /\n", -z, ssp(z))
+        z == -waterdepth && break
       end
     else
       for d ∈ range(0.0, waterdepth; length=_recommend_len(waterdepth, f))
@@ -80,14 +91,39 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       end
       floor(waterdepth) != waterdepth && @printf(io, "%0.6f %0.6f /\n", waterdepth, ssp(-waterdepth))
     end
-    print(io, env.seabed === RigidBoundary ? "'R" : env.seabed === PressureReleaseBoundary ? "'V" : "'A")
+    if nmedia > 1
+      for l ∈ env.seabed.layers[1:end-1]
+        ρ₁, ρ₂ = first(l.ρ), last(l.ρ)
+        cₚ₁, cₚ₂ = first(l.cₚ), last(l.cₚ)
+        cₛ₁, cₛ₂ = first(l.cₛ), last(l.cₛ)
+        λ = max(cₚ₁, cₛ₁, cₚ₂, cₛ₂) / f
+        nmesh = round(Int, 2 * l.h / λ * pm.mesh_density)    # Kraken manual recommends double the number of mesh points for elastic media
+        @printf(io, "%i %0.6f %0.6f\n", nmesh, l.σ, waterdepth + l.h)
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, cₚ₁, cₛ₁, ρ₁ / env.density, in_dBperλ(l.δₚ), in_dBperλ(l.δₛ))
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f /\n", waterdepth + l.h, cₚ₂, cₛ₂, ρ₂ / env.density)
+        waterdepth += l.h
+      end
+    end
+    seabed = env.seabed
+    if seabed isa MultilayerElasticBoundary
+      l = env.seabed.layers[end]
+      seabed = ElasticBoundary(l.ρ, l.cₚ, l.cₛ, l.δₚ, l.δₛ)
+    end
+    if seabed isa ElasticBoundary && seabed.cₛ == 0
+      seabed = FluidBoundary(seabed.ρ, seabed.cₚ, seabed.δₚ)
+    end
+    print(io, seabed === RigidBoundary ? "'R" : seabed === PressureReleaseBoundary ? "'V" : "'A")
     if is_range_dependent(bathy)
       print(io, "*")
       _create_alt_bathy_file(joinpath(dirname, "model.bty"), bathy, value, maxr, f)
     end
-    println(io, "' 0.0")  # bottom roughness = 0
-    if env.seabed !== RigidBoundary && env.seabed !== PressureReleaseBoundary
-      @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, env.seabed.c, env.seabed.ρ / env.density, in_dBperλ(env.seabed.δ))
+    @printf(io, "' %0.6f\n", seabed.σ)
+    if seabed !== RigidBoundary && seabed !== PressureReleaseBoundary
+      if seabed isa ElasticBoundary
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, seabed.cₚ, seabed.cₛ, seabed.ρ / env.density, in_dBperλ(seabed.δₚ), in_dBperλ(seabed.δₛ))
+      else
+        @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, seabed.c, seabed.ρ / env.density, in_dBperλ(seabed.δ))
+      end
     end
     if pm isa Kraken
       @printf(io, "%0.6f  %0.6f\n", pm.clow, pm.chigh)
