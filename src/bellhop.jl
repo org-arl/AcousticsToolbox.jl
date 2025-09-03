@@ -1,7 +1,5 @@
 export Bellhop
 
-const BELLHOP = Ref{Cmd}(AcousticsToolbox_jll.bellhop())
-
 """
 A propagation model based on the FORTRAN OALIB Bellhop model.
 """
@@ -124,7 +122,7 @@ function _bellhop(dirname, debug)
   infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(ignorestatus(`$(BELLHOP[]) $infilebase`); stdout=outfilename, stderr=outfilename))
+    run(pipeline(ignorestatus(`$(AcousticsToolbox_jll.bellhop()) $infilebase`); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Bellhop run completed in $dirname, press ENTER to delete intermediate files..."
       readline()

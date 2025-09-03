@@ -1,9 +1,5 @@
 export Kraken
 
-const KRAKEN = Ref{Cmd}(AcousticsToolbox_jll.kraken())
-const KRAKENC = Ref{Cmd}(AcousticsToolbox_jll.krakenc())
-const FIELD = Ref{Cmd}(AcousticsToolbox_jll.field())
-
 """
 A propagation model based on the FORTRAN OALIB Kraken model.
 """
@@ -146,7 +142,8 @@ function _kraken(dirname, complex_solver, debug)
   infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(ignorestatus(`$(complex_solver ? KRAKENC[] : KRAKEN[]) $infilebase`); stdout=outfilename, stderr=outfilename))
+    solver = complex_solver ? AcousticsToolbox_jll.krakenc() : AcousticsToolbox_jll.kraken()
+    run(pipeline(ignorestatus(`$solver $infilebase`); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Kraken run completed in $dirname, press ENTER to delete intermediate files..."
       readline()
@@ -166,7 +163,7 @@ function _field(dirname, debug)
   infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(ignorestatus(Cmd(`$(FIELD[]) $infilebase`; dir=dirname)); stdout=outfilename, stderr=outfilename))
+    run(pipeline(ignorestatus(Cmd(`$(AcousticsToolbox_jll.field()) $infilebase`; dir=dirname)); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Field run completed in $dirname, press ENTER to delete intermediate files..."
       readline()

@@ -1,7 +1,5 @@
 export Orca
 
-const ORCA = Ref{Cmd}(AcousticsToolbox_jll.orca())
-
 """
 A propagation model based on the ORCA model.
 """
@@ -124,7 +122,7 @@ end
 function _orca(dirname, debug)
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(Cmd(ORCA[]; ignorestatus=true, dir=dirname); stdout=outfilename, stderr=outfilename))
+    run(pipeline(Cmd(AcousticsToolbox_jll.orca(); ignorestatus=true, dir=dirname); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Orca run completed in $dirname, press ENTER to delete intermediate files..."
       readline()
