@@ -1,5 +1,3 @@
-using SimpleDiffEq
-
 export Orca
 
 """
@@ -7,21 +5,29 @@ A propagation model based on the ORCA model.
 """
 Base.@kwdef struct Orca{T} <: AbstractRayPropagationModel
   env::T
+  dz::Float64 = 0.1
   complex_solver::Bool = true
-  clow::Float32 = 0.0
-  chigh::Float32 = 0.0
-  rmin::Float32 = 0.0
-  rmax::Float32 = 0.0
-  phfac::Float32 = 1.0
-  cutoff::Float32 = 0.0
+  cphmin::Float64 = 0.0
+  cphmax::Float64 = 0.0
+  rmin::Float64 = 0.0
+  rmax::Float64 = 0.0
+  phfac::Float64 = 0.0
+  db_cut::Float64 = 0.0
   debug::Bool = false
 end
 
-Orca(env; kwargs...) = Orca{typeof(env)}(; env, kwargs...)
+function Orca(env; dz=0.1, kwargs...)
+  _check_env(Orca, env)
+  Orca{typeof(env)}(; env, kwargs...)
+end
 
 Base.show(io::IO, pm::Orca) = print(io, "Orca(⋯)")
 
-function _create_orca(pm, tx, rx, dirname)
+function _create_orca(pm, tx1, rx, dirname)
+  location(tx1).x == 0 || error("Transmitter must be at (0, 0, z)")
+  location(tx1).y == 0 || error("2D model requires transmitter in the x-z plane")
+  all(location(rx1).x >= 0 for rx1 ∈ rx) || error("Receivers must be in the +x halfspace")
+  all(location(rx1).y == 0 for rx1 ∈ rx) || error("2D model requires receivers in the x-z plane")
   name = basename(dirname)
   svp_filename = joinpath(dirname, "orca.svp")
   opt_filename = joinpath(dirname, "orca.opt")
@@ -33,9 +39,11 @@ function _create_orca(pm, tx, rx, dirname)
   end
   env = pm.env
   waterdepth = maximum(env.bathymetry)
+  maxdepth = waterdepth
   open(svp_filename, "w") do io
-    println(io, "*(1)\n2.0 '$name'")
-    @printf(io, "*(2)\n%0.6f 0.0 %0.6f %0.6f 0.0\n", max(env.surface.c, 1e-6), max(env.surface.ρ / env.density, 1e-6), -in_dBperλ(env.surface.δ))
+    println(io, "*(1)\n3.0 '$name'")
+    @printf(io, "*(2)\n%0.6f 0.0 %0.6f %0.6f 0.0 1.0 1.0\n",
+      max(env.surface.c, 1e-6), max(env.surface.ρ / env.density, 1e-6), -in_dBperλ(env.surface.δ))
     ssp = env.soundspeed
     if is_constant(ssp)
       println(io, "*(3)\n2 0\n*(4)")
@@ -61,45 +69,49 @@ function _create_orca(pm, tx, rx, dirname)
         ρ₁, ρ₂ = first(l.ρ), last(l.ρ)
         cₚ₁, cₚ₂ = first(l.cₚ), last(l.cₚ)
         cₛ₁, cₛ₂ = first(l.cₛ), last(l.cₛ)
-        @printf(io, "1 %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n",
-          cₚ₁, cₚ₂, cₛ₁, cₛ₂, ρ₁, ρ₂, -env.seabed.δₚ, -env.seabed.δₚ, -env.seabed.δₛ, -env.seabed.δₛ)
+        aₚ = in_dBperλ(env.seabed.δₚ)
+        aₛ = in_dBperλ(env.seabed.δₛ)
+        @printf(io, "1 %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 1 1\n",
+          l.h, cₚ₁, cₚ₂, cₛ₁, cₛ₂, ρ₁, ρ₂, -aₚ, -aₚ, -aₛ, -aₛ)
+        maxdepth += l.h
       end
       b = env.seabed.layers[end]
-      @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f\n", b.cₚ, b.cₛ, b.ρ / env.density, -b.δₚ, -b.δₛ)
+      @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f 1 1\n",
+        b.cₚ, b.cₛ, b.ρ / env.density, -in_dBperλ(b.δₚ), -in_dBperλ(b.δₛ))
     elseif env.seabed isa ElasticBoundary
       println(io, "*(5)\n0\n*(6)")
-      @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f\n", env.seabed.cₚ, env.seabed.cₛ, env.seabed.ρ / env.density, -env.seabed.δₚ, -env.seabed.δₛ)
+      @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f 1 1\n",
+        env.seabed.cₚ, env.seabed.cₛ, env.seabed.ρ / env.density,
+        -in_dBperλ(env.seabed.δₚ), -in_dBperλ(env.seabed.δₛ))
     else
       println(io, "*(5)\n0\n*(6)")
-      @printf(io, "*(7)\n%0.6f 0.0 %0.6f %0.6f 0.0\n", env.seabed.c, env.seabed.ρ / env.density, -env.seabed.δ)  # TODO check att units
+      @printf(io, "*(7)\n%0.6f 0.0 %0.6f %0.6f 0.0 1 1\n",
+        env.seabed.c, env.seabed.ρ / env.density, -in_dBperλ(env.seabed.δ))
     end
     println(io, "*(8)\n0\n*(9)")
   end
   open(opt_filename, "w") do io
-    println(io, "*(1)\n1.6 1 0 0 0 0 3")
-    @printf(io, "*(2)\n%d %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 0\n",
-      pm.complex_solver ? 0 : 1, pm.clow, pm.chigh, pm.rmin, pm.rmax, pm.phfac, pm.cutoff)
-    flist = [frequency(tx1) for tx1 ∈ tx]
-    f = sum(flist) / length(flist)
-    maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
-    @printf(io, "*(3)\n1 %0.6f\n", f)
-    println(io, "*(4)\n1 0 0 0 3 1 0 0 0 0 0")
-    @printf(io, "*(5)\n%d", length(tx))
-    for tx1 ∈ tx
-      @printf(io, " %0.6f", -location(tx1).z)
-    end
+    println(io, "*(1)\n2.01 1 0 0 0 0 3")
+    @printf(io, "*(2)\n%d %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 0 0 0\n",
+      pm.complex_solver ? 0 : 1, pm.cphmin, pm.cphmax, pm.rmin, pm.rmax, pm.phfac, pm.db_cut)
+    @printf(io, "*(3)\n1 %0.6f\n", frequency(tx1))
+    println(io, "*(4)\n1 1 0 0 0 1 0 0 0 0 0")
+    @printf(io, "*(5)\n1 %0.6f\n", -location(tx1).z)
     if length(rx) == 1
-      @printf(io, "\n1 %0.6f\n", -location(rx[1]).z)
+      @printf(io, "1 %0.6f\n", -location(rx[1]).z)
       @printf(io, "1 %0.6f\n", location(rx[1]).x / 1000)
     elseif rx isa AcousticReceiverGrid2D
       x = rx.xrange ./ 1000
       z = -rx.zrange
-      @printf(io, "\n%d %0.6f %0.6f\n", -length(z), minimum(z), maximum(z))
+      @printf(io, "%d %0.6f %0.6f\n", -length(z), minimum(z), maximum(z))
       @printf(io, "%d %0.6f %0.6f\n", -length(x), minimum(x), maximum(x))
     else
       error("Receivers must be on a 2D grid")
     end
-    println(io, "*(6)\n*(7)\n*(8)\n*(9)\n*(10)\n*(11)\n*(12)\n*(13)\n*(14)")
+    n = ceil(Int, maxdepth / pm.dz) + 1
+    @printf(io, "*(6)\n0 1 %d 0 %0.6f\n", -n, maxdepth)
+    println(io, "*(7)\n*(8)\n*(9)\n*(10)\n*(11)\n*(12)\n*(13)\n*(14)")
+    range(0, maxdepth; length=n)
   end
 end
 
@@ -107,28 +119,29 @@ end
 
 function UnderwaterAcoustics.arrivals(pm::Orca, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
   mktempdir(prefix="orca_") do dirname
-    _create_orca(pm, [tx1], [rx1], dirname)
+    zs = _create_orca(pm, tx1, [rx1], dirname)
     _orca(dirname, pm.debug)
-    _read_orca_modes(dirname, frequency(tx1), pm.env.soundspeed, pm.env.bathymetry, 0.1) #pm.dz) # FIXME: extend depth to sediment layers
+    ϕ = _read_modes_tlc(dirname).ϕ
+    _read_orca_modes(dirname, zs, ϕ)
   end
 end
 
 function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSource, rx::AcousticReceiverGrid2D)
   fld = mktempdir(prefix="orca_") do dirname
-    _create_orca(pm, [tx1], rx, dirname)
+    _create_orca(pm, tx1, rx, dirname)
     _orca(dirname, pm.debug)
-    # TODO
+    fld = _read_modes_tlc(dirname).fld
   end
-  # fld .* db2amp(spl(tx1))
+  fld .* db2amp(spl(tx1))
 end
 
 function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
   fld = mktempdir(prefix="orca_") do dirname
-    _create_orca(pm, [tx1], [rx1], dirname)
+    _create_orca(pm, tx1, [rx1], dirname)
     _orca(dirname, pm.debug)
-    # TODO
+    fld = _read_modes_tlc(dirname).fld
   end
-  # fld .* db2amp(spl(tx1))
+  only(fld) .* db2amp(spl(tx1))
 end
 
 ### helper functions
@@ -146,7 +159,7 @@ function _orca(dirname, debug)
   end
 end
 
-function _read_orca_modes(dirname, f, c, D, dz)
+function _read_orca_modes(dirname, zs, ϕ)
   filename = joinpath(dirname, "orca.out_modes")
   s = readlines(filename)
   Kw = parse(Float64, match(r"Kw = ([\d\.E\+\-]+)", s[1])[1])
@@ -160,23 +173,53 @@ function _read_orca_modes(dirname, f, c, D, dz)
     vₚ = parse(Float64, flds[4])
     v = parse(Float64, flds[5])
     push!(ducts, parse(Int, flds[6]))
-    ψ = _compute_mode_function(f, c, kᵣ, D, dz)
+    ψ = SampledField(ϕ[:,i]; z=-zs)
     ModeArrival{ComplexF64,typeof(ψ),Union{Missing,Float64},Float64}(i, kᵣ, ψ, v, vₚ)
   end
   modes[ducts .== 1]
 end
 
-# FIXME: assumes pressure release surface and no density variation
-function _compute_mode_function(f, c, kᵣ, D, dz)
-  ω = 2π * f
-  function du!(du, u, p, t)
-    du[1] = u[2]
-    du[2] = -((ω / value(c, -t))^2 - kᵣ^2) * u[1]
+function _check_env(::Type{Orca}, env)
+  env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || env.seabed isa MultilayerElasticBoundary || error("seabed must be a FluidBoundary, ElasticBoundary or MultilayerElasticBoundary")
+  env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
+  is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
+  is_range_dependent(env.altimetry) && error("range-dependent altimetry not supported")
+  is_range_dependent(env.bathymetry) && error("range-dependent bathymetry not supported")
+  mktempdir(prefix="orca_") do dirname
+    try
+      _orca(dirname, false)
+    catch e
+      e isa ExecError && e.details == ["Unable to execute Orca"] && throw(e)
+    end
   end
-  prob = ODEProblem{true}(du!, ComplexF64[0, 1], (0, D))
-  sol = solve(prob, SimpleTsit5(); dt=dz)
-  zs = range(0, -D; step=-dz)
-  ψs = map(z -> first(sol(-z)), zs)
-  ψs ./= sqrt(sum(abs2, ψs) * dz)
-  SampledField(ψs; z=zs)
+  nothing
+end
+
+function _read_modes_tlc(dirname)
+  filename = joinpath(dirname, "modes_tlc.bin")
+  open(filename, "r") do io
+    tag = read(io, UInt32)
+    nzsr = read(io, UInt32)
+    nmode = read(io, UInt32)
+    nrec = read(io, UInt32)
+    nsrc = read(io, UInt32)
+    read(io, UInt32) == tag || error("Bad modes output")
+    tag = read(io, UInt32)
+    phi = Array{ComplexF32}(undef, nzsr, nmode)
+    for jm in 1:nmode
+      for j in 1:nzsr
+        phi[j, jm] = read(io, ComplexF32)
+      end
+    end
+    read(io, UInt32) == tag || error("Bad modes output")
+    tag = read(io, UInt32)
+    tlc = Array{ComplexF32}(undef, nrec, nsrc)
+    for jsrc in 1:nsrc
+      for jrec in 1:nrec
+        tlc[jrec, jsrc] = read(io, ComplexF32)
+      end
+    end
+    read(io, UInt32) == tag || error("Bad modes output")
+    (ϕ=phi, fld=reverse(transpose(tlc); dims=2))
+  end
 end
