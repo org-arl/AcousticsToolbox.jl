@@ -5,17 +5,19 @@ A propagation model based on the ORCA model.
 """
 Base.@kwdef struct Orca{T} <: AbstractRayPropagationModel
   env::T
-  leaky::Bool = true
-  min_phase_speed::Float32 = 0.0
-  max_phase_speed::Float32 = 0.0
+  complex_solver::Bool = true
+  clow::Float32 = 0.0
+  chigh::Float32 = 0.0
   rmin::Float32 = 0.0
   rmax::Float32 = 0.0
-  phase_step::Float32 = 1.0
+  phfac::Float32 = 1.0
   cutoff::Float32 = 0.0
-  false_bottom::Bool = false          # TODO: remove
-  mode_depths::Int = 0
   debug::Bool = false
 end
+
+Orca(env; kwargs...) = Orca{typeof(env)}(; env, kwargs...)
+
+Base.show(io::IO, pm::Orca) = print(io, "Orca(⋯)")
 
 function _create_orca(pm, tx, rx, dirname)
   name = basename(dirname)
@@ -31,7 +33,7 @@ function _create_orca(pm, tx, rx, dirname)
   waterdepth = maximum(env.bathymetry)
   open(svp_filename, "w") do io
     println(io, "*(1)\n2.0 '$name'")
-    @printf(io, "*(2)\n%0.6f 0.0 %0.6f %0.6f 0.0\n", env.surface.c, env.surface.ρ / env.density, -in_dBperλ(env.surface.δ))
+    @printf(io, "*(2)\n%0.6f 0.0 %0.6f %0.6f 0.0\n", max(env.surface.c, 1e-6), max(env.surface.ρ / env.density, 1e-6), -in_dBperλ(env.surface.δ))
     ssp = env.soundspeed
     if is_constant(ssp)
       println(io, "*(3)\n2 0\n*(4)")
@@ -51,20 +53,35 @@ function _create_orca(pm, tx, rx, dirname)
         @printf(io, "%0.6f %0.6f\n", -z, ssp(z))
       end
     end
-    println(io, "*(5)\n0\n*(6)")   # TODO: support bottom layers
-    @printf(io, "*(7)\n%0.6f 0.0 %0.6f %0.6f 0.0\n", env.seabed.c, env.seabed.ρ / env.density, -in_dBperλ(env.seabed.δ))   # TODO: support elastic seabed
+    if env.seabed isa MultilayerElasticBoundary
+      @printf(io, "*(5)\n%d\n*(6)\n", length(env.seabed.layers)-1)
+      for l ∈ env.seabed.layers[1:end-1]
+        ρ₁, ρ₂ = first(l.ρ), last(l.ρ)
+        cₚ₁, cₚ₂ = first(l.cₚ), last(l.cₚ)
+        cₛ₁, cₛ₂ = first(l.cₛ), last(l.cₛ)
+        @printf(io, "1 %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n",
+          cₚ₁, cₚ₂, cₛ₁, cₛ₂, ρ₁, ρ₂, -env.seabed.δₚ, -env.seabed.δₚ, -env.seabed.δₛ, -env.seabed.δₛ)
+      end
+      b = env.seabed.layers[end]
+      @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f\n", b.cₚ, b.cₛ, b.ρ / env.density, -b.δₚ, -b.δₛ)
+    elseif env.seabed isa ElasticBoundary
+      println(io, "*(5)\n0\n*(6)")
+      @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f\n", env.seabed.cₚ, env.seabed.cₛ, env.seabed.ρ / env.density, -env.seabed.δₚ, -env.seabed.δₛ)
+    else
+      println(io, "*(5)\n0\n*(6)")
+      @printf(io, "*(7)\n%0.6f 0.0 %0.6f %0.6f 0.0\n", env.seabed.c, env.seabed.ρ / env.density, -env.seabed.δ)  # TODO check att units
+    end
     println(io, "*(8)\n0\n*(9)")
   end
   open(opt_filename, "w") do io
-    println(io, "*(1)\n2.01 1 0 0 0 0 3")
-    @printf(io, "*(2)\n%d %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 0 0 0\n",
-      pm.leaky ? 0 : 1, pm.min_phase_speed, pm.max_phase_speed, pm.rmin,
-      pm.rmax, pm.phase_step, pm.cutoff)
+    println(io, "*(1)\n1.6 1 0 0 0 0 3")
+    @printf(io, "*(2)\n%d %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 0\n",
+      pm.complex_solver ? 1 : 0, pm.clow, pm.chigh, pm.rmin, pm.rmax, pm.phfac, pm.cutoff)
     flist = [frequency(tx1) for tx1 ∈ tx]
     f = sum(flist) / length(flist)
     maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
     @printf(io, "*(3)\n1 %0.6f\n", f)
-    @printf(io, "*(4)\n1 %d 0 0 0 1 1 0 0 0 0\n", pm.mode_depths > 0 ? 1 : 0)
+    println(io, "*(4)\n1 0 0 0 3 1 1 0 0 0 0")
     @printf(io, "*(5)\n%d", length(tx))
     for tx1 ∈ tx
       @printf(io, " %0.6f", -location(tx1).z)
@@ -80,12 +97,7 @@ function _create_orca(pm, tx, rx, dirname)
     else
       error("Receivers must be on a 2D grid")
     end
-    if pm.mode_depths > 0
-      @printf(io, "*(6)\n3 0 %d 0 %0.6f\n", -pm.mode_depths, waterdepth)
-    else
-      println(io, "*(6)")
-    end
-    println(io, "*(7)\n*(8)\n*(9)\n*(10)\n*(11)\n*(12)\n*(13)\n*(14)")
+    println(io, "*(6)\n*(7)\n*(8)\n*(9)\n*(10)\n*(11)\n*(12)\n*(13)\n*(14)")
   end
 end
 
