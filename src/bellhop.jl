@@ -47,11 +47,11 @@ function UnderwaterAcoustics.arrivals(pm::Bellhop, tx1::AbstractAcousticSource, 
   mktempdir(prefix="bellhop_") do dirname
     nbeams = pm.nbeams
     nbeams == 0 && (nbeams = round(Int, (pm.max_angle - pm.min_angle) / deg2rad(0.05)) + 1)
-    _write_env(pm, [tx1], [rx1], dirname; nbeams, taskcode='A')
+    _write_env(pm, tx1, [rx1], dirname; nbeams, taskcode='A')
     _bellhop(dirname, pm.debug)
     arr = _read_arr(joinpath(dirname, "model.arr"))
     if paths
-      _write_env(pm, [tx1], [rx1], dirname; nbeams, taskcode='E')
+      _write_env(pm, tx1, [rx1], dirname; nbeams, taskcode='E')
       _bellhop(dirname, pm.debug)
       arr2 = _read_rays(joinpath(dirname, "model.ray"))
       for i ∈ eachindex(arr)
@@ -77,7 +77,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
     error("Unknown mode :" * string(mode))
   end
   fld = mktempdir(prefix="bellhop_") do dirname
-    xrev, zrev = _write_env(pm, [tx1], rx, dirname; taskcode)
+    xrev, zrev = _write_env(pm, tx1, rx, dirname; taskcode)
     _bellhop(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
   end
@@ -95,7 +95,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
     error("Unknown mode :" * string(mode))
   end
   fld = mktempdir(prefix="bellhop_") do dirname
-    _write_env(pm, [tx1], [rx1], dirname; taskcode)
+    _write_env(pm, tx1, [rx1], dirname; taskcode)
     _bellhop(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
   end
@@ -110,7 +110,7 @@ Compute ray trace for a single transmitter.
 """
 function rays(pm::Bellhop, tx1::AbstractAcousticSource, max_range::Real, nbeams::Int=pm.nbeams)
   mktempdir(prefix="bellhop_") do dirname
-    _write_env(pm, [tx1], [AcousticReceiver(max_range, 0)], dirname; nbeams, taskcode='R')
+    _write_env(pm, tx1, [AcousticReceiver(max_range, 0)], dirname; nbeams, taskcode='R')
     _bellhop(dirname, pm.debug)
     _read_rays(joinpath(dirname, "model.ray"))
   end
@@ -144,7 +144,7 @@ function _check_env(::Type{Bellhop}, env)
   is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
   mktempdir(prefix="bellhop_") do dirname
     try
-      bellhop(dirname, false)
+      _bellhop(dirname, false)
     catch e
       e isa ExecError && e.details == ["Unable to execute Bellhop"] && throw(e)
     end

@@ -27,9 +27,9 @@ function _check_err!(err, filename)
   end
 end
 
-function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
-  all(location(tx1).x == 0 for tx1 ∈ tx) || error("Transmitters must be at (0, 0, z)")
-  all(location(tx1).y == 0 for tx1 ∈ tx) || error("2D model requires transmitters in the x-z plane")
+function _write_env(pm, tx1, rx, dirname; nbeams=0, taskcode=' ')
+  location(tx1).x == 0 || error("Transmitter must be at (0, 0, z)")
+  location(tx1).y == 0 || error("2D model requires transmitter in the x-z plane")
   all(location(rx1).x >= 0 for rx1 ∈ rx) || error("Receivers must be in the +x halfspace")
   all(location(rx1).y == 0 for rx1 ∈ rx) || error("2D model requires receivers in the x-z plane")
   xrev = false
@@ -39,9 +39,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
   filename = joinpath(dirname, "model.env")
   open(filename, "w") do io
     println(io, "'", name, "'")
-    flist = [frequency(tx1) for tx1 ∈ tx]
-    f = sum(flist) / length(flist)
-    maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
+    f = frequency(tx1)
     @printf(io, "%0.6f\n", f)
     nmedia = env.seabed isa MultilayerElasticBoundary ? length(env.seabed.layers) : 1
     println(io, nmedia)
@@ -129,7 +127,7 @@ function _write_env(pm, tx, rx, dirname; nbeams=0, taskcode=' ')
       @printf(io, "%0.6f  %0.6f\n", pm.clow, pm.chigh)
       @printf(io, "%0.6f\n", 1.01 * maxr / 1000.0)
     end
-    _print_array(io, [-location(tx1).z for tx1 ∈ tx])
+    _print_array(io, [-location(tx1).z])
     if length(rx) == 1
       _print_array(io, [-location(rx[1]).z])
       pm isa Kraken || _print_array(io, [maxr / 1000.0])
