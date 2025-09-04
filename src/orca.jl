@@ -1,3 +1,5 @@
+using SimpleDiffEq
+
 export Orca
 
 """
@@ -76,12 +78,12 @@ function _create_orca(pm, tx, rx, dirname)
   open(opt_filename, "w") do io
     println(io, "*(1)\n1.6 1 0 0 0 0 3")
     @printf(io, "*(2)\n%d %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 0\n",
-      pm.complex_solver ? 1 : 0, pm.clow, pm.chigh, pm.rmin, pm.rmax, pm.phfac, pm.cutoff)
+      pm.complex_solver ? 0 : 1, pm.clow, pm.chigh, pm.rmin, pm.rmax, pm.phfac, pm.cutoff)
     flist = [frequency(tx1) for tx1 ∈ tx]
     f = sum(flist) / length(flist)
     maximum(abs, flist .- f) / f > 0.2 && @warn("Source frequency varies by more than 20% from nominal frequency")
     @printf(io, "*(3)\n1 %0.6f\n", f)
-    println(io, "*(4)\n1 0 0 0 3 1 1 0 0 0 0")
+    println(io, "*(4)\n1 0 0 0 3 1 0 0 0 0 0")
     @printf(io, "*(5)\n%d", length(tx))
     for tx1 ∈ tx
       @printf(io, " %0.6f", -location(tx1).z)
@@ -107,7 +109,7 @@ function UnderwaterAcoustics.arrivals(pm::Orca, tx1::AbstractAcousticSource, rx1
   mktempdir(prefix="orca_") do dirname
     _create_orca(pm, [tx1], [rx1], dirname)
     _orca(dirname, pm.debug)
-    # TODO
+    _read_orca_modes(dirname, frequency(tx1), pm.env.soundspeed, pm.env.bathymetry, 0.1) #pm.dz) # FIXME: extend depth to sediment layers
   end
 end
 
@@ -142,4 +144,39 @@ function _orca(dirname, debug)
   catch
     throw(ExecError("Orca", ["Unable to execute Orca"]))
   end
+end
+
+function _read_orca_modes(dirname, f, c, D, dz)
+  filename = joinpath(dirname, "orca.out_modes")
+  s = readlines(filename)
+  Kw = parse(Float64, match(r"Kw = ([\d\.E\+\-]+)", s[1])[1])
+  ducts = Int[]
+  modes = map(s[3:end]) do s1
+    flds = split(strip(s1), r" +")
+    i = parse(Int, flds[1])
+    kre = parse(Float64, flds[2])
+    att = parse(Float64, flds[3])
+    kᵣ = ComplexF64(kre * Kw, log(10^(-att/1000/20)))
+    vₚ = parse(Float64, flds[4])
+    v = parse(Float64, flds[5])
+    push!(ducts, parse(Int, flds[6]))
+    ψ = _compute_mode_function(f, c, kᵣ, D, dz)
+    ModeArrival{ComplexF64,typeof(ψ),Union{Missing,Float64},Float64}(i, kᵣ, ψ, v, vₚ)
+  end
+  modes[ducts .== 1]
+end
+
+# FIXME: assumes pressure release surface and no density variation
+function _compute_mode_function(f, c, kᵣ, D, dz)
+  ω = 2π * f
+  function du!(du, u, p, t)
+    du[1] = u[2]
+    du[2] = -((ω / value(c, -t))^2 - kᵣ^2) * u[1]
+  end
+  prob = ODEProblem{true}(du!, ComplexF64[0, 1], (0, D))
+  sol = solve(prob, SimpleTsit5(); dt=dz)
+  zs = range(0, -D; step=-dz)
+  ψs = map(z -> first(sol(-z)), zs)
+  ψs ./= sqrt(sum(abs2, ψs) * dz)
+  SampledField(ψs; z=zs)
 end
