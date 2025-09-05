@@ -3,7 +3,7 @@ export Orca
 """
 A propagation model based on the ORCA model.
 """
-Base.@kwdef struct Orca{T} <: AbstractRayPropagationModel
+Base.@kwdef struct Orca{T} <: AbstractModePropagationModel
   env::T
   dz::Float64 = 0.1
   complex_solver::Bool = true
@@ -16,7 +16,7 @@ Base.@kwdef struct Orca{T} <: AbstractRayPropagationModel
   debug::Bool = false
 end
 
-function Orca(env; dz=0.1, kwargs...)
+function Orca(env; kwargs...)
   _check_env(Orca, env)
   Orca{typeof(env)}(; env, kwargs...)
 end
@@ -43,22 +43,24 @@ function _create_orca(pm, tx1, rx, dirname)
   open(svp_filename, "w") do io
     println(io, "*(1)\n3.0 '$name'")
     @printf(io, "*(2)\n%0.6f 0.0 %0.6f %0.6f 0.0 1.0 1.0\n",
-      max(env.surface.c, 1e-6), max(env.surface.ρ / env.density, 1e-6), -in_dBperλ(env.surface.δ))
+      _c(env.surface.c), _ρ(env.surface.ρ / env.density), -in_dBperλ(env.surface.δ))
     ssp = env.soundspeed
+    f = frequency(tx1)
+    att = -20*log10(absorption(f, 1, pm.env.salinity, pm.env.temperature, waterdepth/2, pm.env.pH)) / f * 1000
     if is_constant(ssp)
       println(io, "*(3)\n2 0\n*(4)")
-      @printf(io, "0 %0.6f 1 0\n", value(ssp))
+      @printf(io, "0 %0.6f 1 %0.6f\n", value(ssp), att)
       @printf(io, "%0.6f %0.6f\n", waterdepth, value(ssp))
     elseif ssp isa SampledFieldZ
       @printf(io, "*(3)\n%d 0\n*(4)\n", length(ssp.zrange))
-      @printf(io, "%0.6f %0.6f 1 0\n", -z[1], ssp(z[1]))
+      @printf(io, "%0.6f %0.6f 1 %0.6f\n", -ssp.zrange[1], ssp(ssp.zrange[1]), att)
       for z ∈ ssp.zrange[2:end]
         @printf(io, "%0.6f %0.6f\n", -z, ssp(z))
       end
     else
       n = _recommend_len(waterdepth, f)
       @printf(io, "*(3)\n%d 0\n*(4)\n", n)
-      @printf(io, "%0.6f %0.6f 1 0\n", 0.0, ssp(0.0))
+      @printf(io, "%0.6f %0.6f 1 %0.6f\n", 0.0, ssp(0.0), att)
       for d ∈ range(0.0, waterdepth; length=n)[2:end]
         @printf(io, "%0.6f %0.6f\n", -z, ssp(z))
       end
@@ -69,24 +71,24 @@ function _create_orca(pm, tx1, rx, dirname)
         ρ₁, ρ₂ = first(l.ρ), last(l.ρ)
         cₚ₁, cₚ₂ = first(l.cₚ), last(l.cₚ)
         cₛ₁, cₛ₂ = first(l.cₛ), last(l.cₛ)
-        aₚ = in_dBperλ(env.seabed.δₚ)
-        aₛ = in_dBperλ(env.seabed.δₛ)
+        aₚ = in_dBperλ(l.δₚ)
+        aₛ = in_dBperλ(l.δₛ)
         @printf(io, "1 %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 1 1\n",
-          l.h, cₚ₁, cₚ₂, cₛ₁, cₛ₂, ρ₁, ρ₂, -aₚ, -aₚ, -aₛ, -aₛ)
+          l.h, _c(cₚ₁), _c(cₚ₂), cₛ₁, cₛ₂, _ρ(ρ₁ / env.density), _ρ(ρ₂ / env.density), -aₚ, -aₚ, -aₛ, -aₛ)
         maxdepth += l.h
       end
       b = env.seabed.layers[end]
       @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f 1 1\n",
-        b.cₚ, b.cₛ, b.ρ / env.density, -in_dBperλ(b.δₚ), -in_dBperλ(b.δₛ))
+        _c(b.cₚ), b.cₛ, _ρ(b.ρ / env.density), -in_dBperλ(b.δₚ), -in_dBperλ(b.δₛ))
     elseif env.seabed isa ElasticBoundary
       println(io, "*(5)\n0\n*(6)")
       @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f 1 1\n",
-        env.seabed.cₚ, env.seabed.cₛ, env.seabed.ρ / env.density,
+        _c(env.seabed.cₚ), env.seabed.cₛ, _ρ(env.seabed.ρ / env.density),
         -in_dBperλ(env.seabed.δₚ), -in_dBperλ(env.seabed.δₛ))
     else
       println(io, "*(5)\n0\n*(6)")
       @printf(io, "*(7)\n%0.6f 0.0 %0.6f %0.6f 0.0 1 1\n",
-        env.seabed.c, env.seabed.ρ / env.density, -in_dBperλ(env.seabed.δ))
+        _c(env.seabed.c), _ρ(env.seabed.ρ / env.density), -in_dBperλ(env.seabed.δ))
     end
     println(io, "*(8)\n0\n*(9)")
   end
@@ -114,6 +116,9 @@ function _create_orca(pm, tx1, rx, dirname)
     range(0, maxdepth; length=n)
   end
 end
+
+_c(c) = clamp(c, 1e-6, 1e8)
+_ρ(ρ) = clamp(ρ, 1e-6, 1e8)
 
 ### interface functions
 
@@ -163,8 +168,7 @@ function _read_orca_modes(dirname, zs, ϕ)
   filename = joinpath(dirname, "orca.out_modes")
   s = readlines(filename)
   Kw = parse(Float64, match(r"Kw = ([\d\.E\+\-]+)", s[1])[1])
-  ducts = Int[]
-  modes = map(s[3:end]) do s1
+  map(s[3:end]) do s1
     flds = split(strip(s1), r" +")
     i = parse(Int, flds[1])
     kre = parse(Float64, flds[2])
@@ -176,7 +180,6 @@ function _read_orca_modes(dirname, zs, ϕ)
     ψ = SampledField(ϕ[:,i]; z=-zs)
     ModeArrival{ComplexF64,typeof(ψ),Union{Missing,Float64},Float64}(i, kᵣ, ψ, v, vₚ)
   end
-  modes[ducts .== 1]
 end
 
 function _check_env(::Type{Orca}, env)
