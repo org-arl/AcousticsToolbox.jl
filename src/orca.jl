@@ -113,7 +113,7 @@ function _create_orca(pm, tx1, rx, dirname)
       @printf(io, "*(3)\n%d 0\n*(4)\n", n)
       @printf(io, "%0.6f %0.6f 1 %0.6f\n", 0.0, ssp(0.0), att)
       for d ∈ range(0.0, waterdepth; length=n)[2:end]
-        @printf(io, "%0.6f %0.6f\n", -z, ssp(z))
+        @printf(io, "%0.6f %0.6f\n", -d, ssp(d))
       end
     end
     if env.seabed isa MultilayerElasticBoundary
@@ -205,9 +205,9 @@ end
 function _check_env(::Type{Orca}, env)
   env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || env.seabed isa MultilayerElasticBoundary || error("seabed must be a FluidBoundary, ElasticBoundary or MultilayerElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
-  is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
-  is_range_dependent(env.altimetry) && error("range-dependent altimetry not supported")
-  is_range_dependent(env.bathymetry) && error("range-dependent bathymetry not supported")
+  is_range_dependent(env.soundspeed) && error("Range-dependent soundspeed not supported")
+  is_range_dependent(env.altimetry) && error("Range-dependent altimetry not supported")
+  is_range_dependent(env.bathymetry) && error("Range-dependent bathymetry not supported")
   mktempdir(prefix="orca_") do dirname
     try
       _orca(dirname, false)

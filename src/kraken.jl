@@ -124,9 +124,9 @@ end
 function _check_env(::Type{Kraken}, env)
   env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || env.seabed isa MultilayerElasticBoundary || error("seabed must be a FluidBoundary, ElasticBoundary or MultilayerElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
-  is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
-  is_range_dependent(env.altimetry) && error("range-dependent altimetry not supported")
-  is_range_dependent(env.bathymetry) && error("range-dependent bathymetry not supported")
+  is_range_dependent(env.soundspeed) && error("Range-dependent soundspeed not supported")
+  is_range_dependent(env.altimetry) && error("Range-dependent altimetry not supported")
+  is_range_dependent(env.bathymetry) && error("Range-dependent bathymetry not supported")
   mktempdir(prefix="kraken_") do dirname
     try
       _kraken(dirname, false, false)

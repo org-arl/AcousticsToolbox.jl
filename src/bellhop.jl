@@ -16,7 +16,7 @@ struct Bellhop{T} <: AbstractRayPropagationModel
     -π/2 ≤ min_angle ≤ π/2 || error("min_angle should be between -π/2 and π/2")
     -π/2 ≤ max_angle ≤ π/2 || error("max_angle should be between -π/2 and π/2")
     min_angle < max_angle || error("max_angle should be more than min_angle")
-    beam_type ∈ (:geometric, :gaussian) || error("unknown beam_type type")
+    beam_type ∈ (:geometric, :gaussian) || error("Unknown beam_type type")
     new{typeof(env)}(env, max(nbeams, 0), Float32(in_units(u"rad", min_angle)), Float32(in_units(u"rad", max_angle)), beam_type, beam_shift, debug)
   end
 end
@@ -141,7 +141,7 @@ end
 function _check_env(::Type{Bellhop}, env)
   env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || error("seabed must be a FluidBoundary or ElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
-  is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
+  is_range_dependent(env.soundspeed) && error("Range-dependent soundspeed not supported")
   mktempdir(prefix="bellhop_") do dirname
     try
       _bellhop(dirname, false)
