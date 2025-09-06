@@ -11,6 +11,7 @@ using Printf
 
 include("bellhop.jl")
 include("kraken.jl")
+include("orca.jl")
 include("common.jl")
 
 end # module

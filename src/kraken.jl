@@ -61,7 +61,7 @@ function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, r
       max_c = 2 * max(max_c, maximum(pm.env.seabed.c))
     end
     rxs = AcousticReceiverGrid2D(rx1.pos.x, range(-D, 0; length=ceil(Int, 10D/λ + 1)))
-    _write_env(pm, [tx1], rxs, dirname)
+    _write_env(pm, tx1, rxs, dirname)
     _kraken(dirname, pm.complex_solver, pm.debug)
     ϕ, kᵣ, depths = _read_mod(pm, dirname)    # read mode shapes
     m, k, v = _read_grp(pm, dirname)          # read group velocity
@@ -90,9 +90,9 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
     error("Unknown mode :" * string(mode))
   end
   fld = mktempdir(prefix="kraken_") do dirname
-    xrev, zrev = _write_env(pm, [tx1], rx, dirname)
+    xrev, zrev = _write_env(pm, tx1, rx, dirname)
     _kraken(dirname, pm.complex_solver, pm.debug)
-    _write_flp(pm, [tx1], rx, dirname, mode)
+    _write_flp(pm, tx1, rx, dirname, mode)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
   end
@@ -109,9 +109,9 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
     error("Unknown mode :" * string(mode))
   end
   fld = mktempdir(prefix="bellhop_") do dirname
-    _write_env(pm, [tx1], [rx1], dirname)
+    _write_env(pm, tx1, [rx1], dirname)
     _kraken(dirname, pm.complex_solver, pm.debug)
-    _write_flp(pm, [tx1], [rx1], dirname, mode)
+    _write_flp(pm, tx1, [rx1], dirname, mode)
     _field(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
   end
@@ -124,13 +124,13 @@ end
 function _check_env(::Type{Kraken}, env)
   env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || env.seabed isa MultilayerElasticBoundary || error("seabed must be a FluidBoundary, ElasticBoundary or MultilayerElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
-  is_range_dependent(env.soundspeed) && error("range-dependent soundspeed not supported")
-  is_range_dependent(env.altimetry) && error("range-dependent altimetry not supported")
-  is_range_dependent(env.bathymetry) && error("range-dependent bathymetry not supported")
+  is_range_dependent(env.soundspeed) && error("Range-dependent soundspeed not supported")
+  is_range_dependent(env.altimetry) && error("Range-dependent altimetry not supported")
+  is_range_dependent(env.bathymetry) && error("Range-dependent bathymetry not supported")
   mktempdir(prefix="kraken_") do dirname
     try
-      kraken(dirname, false)
-      krakenc(dirname, false)
+      _kraken(dirname, false, false)
+      _kraken(dirname, true, false)
     catch e
       e isa ExecError && e.details == ["Unable to execute Kraken"] && throw(e)
     end
@@ -179,7 +179,7 @@ function _field(dirname, debug)
   end
 end
 
-function _write_flp(pm::Kraken, tx, rx, dirname, mode)
+function _write_flp(pm::Kraken, tx1, rx, dirname, mode)
   filename = joinpath(dirname, "model.flp")
   open(filename, "w") do io
     println(io, "/")                # take title from modes file
@@ -191,7 +191,7 @@ function _write_flp(pm::Kraken, tx, rx, dirname, mode)
     println(io, "0.0")              # range (km) of first profile
     if length(rx) == 1
       _print_array(io, [location(rx[1]).x / 1000] )       # receiver ranges (km)
-      _print_array(io, [-location(tx1).z for tx1 ∈ tx])   # source depths (m)
+      _print_array(io, [-location(tx1).z])                # source depths (m)
       _print_array(io, [-location(rx[1]).z])              # receiver depths (m)
       _print_array(io, zeros(1))                          # receiver range displacements
     elseif rx isa AcousticReceiverGrid2D
@@ -200,7 +200,7 @@ function _write_flp(pm::Kraken, tx, rx, dirname, mode)
       first(d) > last(d) && (d = reverse(d))
       first(r) > last(r) && (r = reverse(r))
       _print_array(io, r)                                 # receiver ranges (km)
-      _print_array(io, [-location(tx1)[3] for tx1 ∈ tx])  # source depths (m)
+      _print_array(io, [-location(tx1).z])                # source depths (m)
       _print_array(io, d)                                 # receiver depths (m)
       _print_array(io, zeros(length(d)))                  # receiver range displacements
     else

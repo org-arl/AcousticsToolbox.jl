@@ -6,15 +6,16 @@
 
 # AcousticsToolbox
 
-This package provides a Julia wrapper to the [OALIB](http://oalib.hlsresearch.com/AcousticsToolbox/) acoustic propagation modeling toolbox,
-making it available for use with [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl).
+This package provides a Julia wrapper to the [OALIB](http://oalib.hlsresearch.com/AcousticsToolbox/) acoustic propagation modeling toolbox
+(and other related tools), making it available for use with [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl).
 
-Currently, only two of the OALIB models are supported:
+Currently, the following models are supported:
 
-- Bellhop 2D Gaussian beam tracer (almost complete support)
-- Kraken 2D normal mode model (partial support)
+- Bellhop 2D Gaussian beam tracer
+- Kraken 2D normal mode model
+- Orca 2D normal mode model
 
-For information on how to use the models, see [documentation](https://org-arl.github.io/UnderwaterAcoustics.jl/bellhop.html).
+For information on how to use the models, see [documentation](https://org-arl.github.io/UnderwaterAcoustics.jl/).
 
 ## Contributing
 
@@ -23,3 +24,4 @@ Contributions in the form of bug reports, feature requests, ideas/suggestions, b
 The scopes active in this repository are:
 - **bellhop**: Bellhop
 - **kraken**: Kraken
+- **orca**: Orca
