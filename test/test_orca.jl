@@ -18,7 +18,7 @@ using TestItems
     m1 = @inferred arrivals(pm1, tx, rx)
     @test [m[i].kᵣ for i ∈ 1:25] ≈ [m1[i].kᵣ for i ∈ 1:25] atol=0.001
     @test [m[i].v for i ∈ 1:25] ≈ [m1[i].v for i ∈ 1:25] atol=0.1
-    rxs = AcousticReceiverGrid2D(20000:10:22000, -25)
+    rxs = @inferred AcousticReceiverGrid2D(20000:10:22000, -25)
     x = @inferred transmission_loss(pm, tx, rxs)
     x1 = @inferred transmission_loss(pm1, tx, rxs)
     @test sum(abs, x1 - x) / length(x) < 1

@@ -58,7 +58,18 @@ function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSourc
   fld = mktempdir(prefix="orca_") do dirname
     _create_orca(pm, tx1, rx, dirname)
     _orca(dirname, pm.debug)
-    _read_modes_tlc(dirname).fld
+    x = _read_modes_tlc(dirname).fld
+    # HACK: extra run because the first TL in the array from ORCA is incorrect
+    if size(rx, 1) > 1
+      rx1 = AcousticReceiverGrid2D(rx.xrange[1], rx.zrange)
+      _create_orca(pm, tx1, rx1, dirname)
+      _orca(dirname, pm.debug)
+      y = _read_modes_tlc(dirname).fld
+      x[1,:] .= y[2,:]
+    else
+      x = x[2:end,:]
+    end
+    x
   end
   fld .* db2amp(spl(tx1))
 end
@@ -69,7 +80,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSourc
     _orca(dirname, pm.debug)
     _read_modes_tlc(dirname).fld
   end
-  only(fld) .* db2amp(spl(tx1))
+  fld[2] .* db2amp(spl(tx1))
 end
 
 ### helper functions
@@ -152,12 +163,19 @@ function _create_orca(pm, tx1, rx, dirname)
     @printf(io, "*(5)\n1 %0.6f\n", -location(tx1).z)
     if length(rx) == 1
       @printf(io, "1 %0.6f\n", -location(rx[1]).z)
-      @printf(io, "1 %0.6f\n", location(rx[1]).x / 1000)
+      # HACK: extra entry at start because the first TL from ORCA is incorrect
+      x = location(rx[1]).x / 1000
+      @printf(io, "2 %0.6f %0.6f\n", x, x)
     elseif rx isa AcousticReceiverGrid2D
       x = rx.xrange ./ 1000
       z = -rx.zrange
       @printf(io, "%d %0.6f %0.6f\n", -length(z), minimum(z), maximum(z))
-      @printf(io, "%d %0.6f %0.6f\n", -length(x), minimum(x), maximum(x))
+      if size(rx, 1) == 1
+        # HACK: extra entry at start because the first TL from ORCA is incorrect
+        @printf(io, "2 %0.6f %0.6f\n", x[1,1], x[1,1])
+      else
+        @printf(io, "%d %0.6f %0.6f\n", -length(x), minimum(x), maximum(x))
+      end
     else
       error("Receivers must be on a 2D grid")
     end
@@ -188,7 +206,6 @@ function _read_orca_modes(dirname, zs, ϕ)
   filename = joinpath(dirname, "orca.out_modes")
   s = readlines(filename)
   Kw = parse(Float64, match(r"Kw = ([\d\.E\+\-]+)", s[1])[1])
-  #map(s[3:end]) do s1
   map(3:length(s)) do i
     flds = split(strip(s[i]), r" +")
     m = parse(Int, flds[1])
