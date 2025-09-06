@@ -16,12 +16,63 @@ Base.@kwdef struct Orca{T} <: AbstractModePropagationModel
   debug::Bool = false
 end
 
+"""
+    Orca(env; kwargs...)
+
+Create a Orca propagation model.
+
+Supported keyword arguments:
+- `dz`: vertical step size for sampling modes in m (default: 0.1)
+- `complex_solver`: selects between real/complex solver (default: `true`)
+- `cphmin`: minimum phase speed in m/s (default: 0, 0=auto)
+- `cphmax`: maximum phase speed in m/s (default: 0, 0=auto)
+- `rmin`: minimum range of interest in m (default: 0, 0=auto)
+- `rmax`: maximum range of interest in m (default: 0, 0=auto)
+- `phfac`: phase step parameter (default: 0, 0=auto)
+- `db_cut`: dB cutoff for weak modes (default: 0, 0=auto)
+- `debug`: debug mode (default: false)
+
+Enabling debug mode will create a temporary directory with the Orca input and output files.
+This allows manual inspection of the files.
+"""
 function Orca(env; kwargs...)
   _check_env(Orca, env)
   Orca{typeof(env)}(; env, kwargs...)
 end
 
 Base.show(io::IO, pm::Orca) = print(io, "Orca(⋯)")
+
+### interface functions
+
+function UnderwaterAcoustics.arrivals(pm::Orca, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
+  mktempdir(prefix="orca_") do dirname
+    D, n = _create_orca(pm, tx1, [rx1], dirname)::Tuple{Float64,Int}
+    zs = range(0, D; length=n)
+    _orca(dirname, pm.debug)
+    ϕ = _read_modes_tlc(dirname).ϕ
+    _read_orca_modes(dirname, zs, ϕ)
+  end
+end
+
+function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSource, rx::AcousticReceiverGrid2D)
+  fld = mktempdir(prefix="orca_") do dirname
+    _create_orca(pm, tx1, rx, dirname)
+    _orca(dirname, pm.debug)
+    _read_modes_tlc(dirname).fld
+  end
+  fld .* db2amp(spl(tx1))
+end
+
+function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
+  fld = mktempdir(prefix="orca_") do dirname
+    _create_orca(pm, tx1, [rx1], dirname)
+    _orca(dirname, pm.debug)
+    _read_modes_tlc(dirname).fld
+  end
+  only(fld) .* db2amp(spl(tx1))
+end
+
+### helper functions
 
 function _create_orca(pm, tx1, rx, dirname)
   location(tx1).x == 0 || error("Transmitter must be at (0, 0, z)")
@@ -95,7 +146,7 @@ function _create_orca(pm, tx1, rx, dirname)
   open(opt_filename, "w") do io
     println(io, "*(1)\n2.01 1 0 0 0 0 3")
     @printf(io, "*(2)\n%d %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 0 0 0\n",
-      pm.complex_solver ? 0 : 1, pm.cphmin, pm.cphmax, pm.rmin, pm.rmax, pm.phfac, pm.db_cut)
+      pm.complex_solver ? 0 : 1, pm.cphmin, pm.cphmax, pm.rmin / 1000, pm.rmax / 1000, pm.phfac, pm.db_cut)
     @printf(io, "*(3)\n1 %0.6f\n", frequency(tx1))
     println(io, "*(4)\n1 1 0 0 0 1 0 0 0 0 0")
     @printf(io, "*(5)\n1 %0.6f\n", -location(tx1).z)
@@ -110,46 +161,15 @@ function _create_orca(pm, tx1, rx, dirname)
     else
       error("Receivers must be on a 2D grid")
     end
-    n = ceil(Int, maxdepth / pm.dz) + 1
+    n = min(ceil(Int, maxdepth / pm.dz) + 1, 10000)::Int64
     @printf(io, "*(6)\n0 1 %d 0 %0.6f\n", -n, maxdepth)
     println(io, "*(7)\n*(8)\n*(9)\n*(10)\n*(11)\n*(12)\n*(13)\n*(14)")
-    range(0, maxdepth; length=n)
+    (Float64(maxdepth), n)
   end
 end
 
 _c(c) = clamp(c, 1e-6, 1e8)
 _ρ(ρ) = clamp(ρ, 1e-6, 1e8)
-
-### interface functions
-
-function UnderwaterAcoustics.arrivals(pm::Orca, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
-  mktempdir(prefix="orca_") do dirname
-    zs = _create_orca(pm, tx1, [rx1], dirname)
-    _orca(dirname, pm.debug)
-    ϕ = _read_modes_tlc(dirname).ϕ
-    _read_orca_modes(dirname, zs, ϕ)
-  end
-end
-
-function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSource, rx::AcousticReceiverGrid2D)
-  fld = mktempdir(prefix="orca_") do dirname
-    _create_orca(pm, tx1, rx, dirname)
-    _orca(dirname, pm.debug)
-    fld = _read_modes_tlc(dirname).fld
-  end
-  fld .* db2amp(spl(tx1))
-end
-
-function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
-  fld = mktempdir(prefix="orca_") do dirname
-    _create_orca(pm, tx1, [rx1], dirname)
-    _orca(dirname, pm.debug)
-    fld = _read_modes_tlc(dirname).fld
-  end
-  only(fld) .* db2amp(spl(tx1))
-end
-
-### helper functions
 
 function _orca(dirname, debug)
   outfilename = joinpath(dirname, "output.txt")
@@ -168,17 +188,17 @@ function _read_orca_modes(dirname, zs, ϕ)
   filename = joinpath(dirname, "orca.out_modes")
   s = readlines(filename)
   Kw = parse(Float64, match(r"Kw = ([\d\.E\+\-]+)", s[1])[1])
-  map(s[3:end]) do s1
-    flds = split(strip(s1), r" +")
-    i = parse(Int, flds[1])
+  #map(s[3:end]) do s1
+  map(3:length(s)) do i
+    flds = split(strip(s[i]), r" +")
+    m = parse(Int, flds[1])
     kre = parse(Float64, flds[2])
     att = parse(Float64, flds[3])
     kᵣ = ComplexF64(kre * Kw, log(10^(-att/1000/20)))
     vₚ = parse(Float64, flds[4])
     v = parse(Float64, flds[5])
-    push!(ducts, parse(Int, flds[6]))
-    ψ = SampledField(ϕ[:,i]; z=-zs)
-    ModeArrival{ComplexF64,typeof(ψ),Union{Missing,Float64},Float64}(i, kᵣ, ψ, v, vₚ)
+    ψ = SampledField(ϕ[:,m]; z=-zs)
+    ModeArrival{ComplexF64,typeof(ψ),Float64,Float64}(m, kᵣ, ψ, v, vₚ)
   end
 end
 

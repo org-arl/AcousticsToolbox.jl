@@ -52,7 +52,7 @@ function _write_env(pm, tx1, rx, dirname; nbeams=0, taskcode=' ')
     end
     ssp = env.soundspeed
     sspi = 'C'
-    ssp isa SampledFieldZ && ssp.interp === :cubic && (sspi = 'S')
+    ssp isa SampledFieldZ && ssp.interp === CubicSpline() && (sspi = 'S')
     surf = env.surface === RigidBoundary ? 'R' : env.surface === PressureReleaseBoundary ? 'V' : 'A'
     print(io, "'", sspi, surf, "WF")  # bottom attenuation in dB/wavelength, Francois-Garrison volume attenuation
     pm isa Kraken && pm.robust && print(io, ".")
@@ -177,7 +177,7 @@ function _create_alt_bathy_file(filename, data, func, maxr, f)
     interp = "L"
     if data isa SampledFieldX
       x = data.xrange
-      data.interp !== :linear && (interp = "C")
+      data.interp !== Linear() && (interp = "C")
     else
       x = range(0.0, maxr; length=_recommend_len(maxr, f))
     end
