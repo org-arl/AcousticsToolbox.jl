@@ -225,13 +225,6 @@ function _check_env(::Type{Orca}, env)
   is_range_dependent(env.soundspeed) && error("Range-dependent soundspeed not supported")
   is_range_dependent(env.altimetry) && error("Range-dependent altimetry not supported")
   is_range_dependent(env.bathymetry) && error("Range-dependent bathymetry not supported")
-  mktempdir(prefix="orca_") do dirname
-    try
-      _orca(dirname, false)
-    catch e
-      e isa ExecError && e.details == ["Unable to execute Orca"] && throw(e)
-    end
-  end
   nothing
 end
 

@@ -142,12 +142,5 @@ function _check_env(::Type{Bellhop}, env)
   env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || error("seabed must be a FluidBoundary or ElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
   is_range_dependent(env.soundspeed) && error("Range-dependent soundspeed not supported")
-  mktempdir(prefix="bellhop_") do dirname
-    try
-      _bellhop(dirname, false)
-    catch e
-      e isa ExecError && e.details == ["Unable to execute Bellhop"] && throw(e)
-    end
-  end
   nothing
 end
