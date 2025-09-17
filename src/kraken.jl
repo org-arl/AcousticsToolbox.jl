@@ -11,14 +11,15 @@ struct Kraken{T} <: AbstractModePropagationModel
   chigh::Float32
   complex_solver::Bool
   robust::Bool
+  temp_dir::String
   debug::Bool
-  function Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
+  function Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, temp_dir, debug)
     _check_env(Kraken, env)
     nmodes ≥ 1 || error("number of modes should be positive")
     mesh_density ≥ 0 || error("mesh density should be non-negative")
     clow ≥ 0.0 || error("clow should be non-negative")
     chigh > clow || error("chigh should be more than clow")
-    new{typeof(env)}(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
+    new{typeof(env)}(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, temp_dir, debug)
   end
 end
 
@@ -34,19 +35,22 @@ Supported keyword arguments:
 - `chigh`: upper limit of phase speed (default: 2500)
 - `complex_solver`: use KrakenC for finding modes (default: true)
 - `robust`: use robust (but slow) root finder (default: false)
+- `temp_dir`: directory for temporary files (default: system temp directory)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Kraken input and output files.
 This allows manual inspection of the files.
 """
-Kraken(env; nmodes=9999, mesh_density=0, clow=1300.0, chigh=2500.0, complex_solver=true, robust=false, debug=false) = Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, debug)
+function Kraken(env; nmodes=9999, mesh_density=0, clow=1300.0, chigh=2500.0, complex_solver=true, robust=false, temp_dir=tempdir(), debug=false)
+  Kraken(env, nmodes, mesh_density, clow, chigh, complex_solver, robust, temp_dir, debug)
+end
 
 Base.show(io::IO, pm::Kraken) = print(io, "Kraken(⋯)")
 
 ### interface functions
 
 function UnderwaterAcoustics.arrivals(pm::Kraken, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
-  mktempdir(prefix="kraken_") do dirname
+  mktempdir(pm.temp_dir; prefix="kraken_") do dirname
     # replace a single receiver with a grid of receivers at λ/10 spacing to sample the modes
     max_c = maximum(pm.env.soundspeed)
     λ = max_c / tx1.frequency
@@ -89,7 +93,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   else
     error("Unknown mode :" * string(mode))
   end
-  fld = mktempdir(prefix="kraken_") do dirname
+  fld = mktempdir(pm.temp_dir; prefix="kraken_") do dirname
     xrev, zrev = _write_env(pm, tx1, rx, dirname)
     _kraken(dirname, pm.complex_solver, pm.debug)
     _write_flp(pm, tx1, rx, dirname, mode)
@@ -108,7 +112,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Kraken, tx1::AbstractAcousticSou
   else
     error("Unknown mode :" * string(mode))
   end
-  fld = mktempdir(prefix="bellhop_") do dirname
+  fld = mktempdir(pm.temp_dir; prefix="bellhop_") do dirname
     _write_env(pm, tx1, [rx1], dirname)
     _kraken(dirname, pm.complex_solver, pm.debug)
     _write_flp(pm, tx1, [rx1], dirname, mode)

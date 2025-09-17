@@ -13,6 +13,7 @@ Base.@kwdef struct Orca{T} <: AbstractModePropagationModel
   rmax::Float64 = 0.0
   phfac::Float64 = 0.0
   db_cut::Float64 = 0.0
+  temp_dir::String = tempdir()
   debug::Bool = false
 end
 
@@ -30,6 +31,7 @@ Supported keyword arguments:
 - `rmax`: maximum range of interest in m (default: 0, 0=auto)
 - `phfac`: phase step parameter (default: 0, 0=auto)
 - `db_cut`: dB cutoff for weak modes (default: 0, 0=auto)
+- `temp_dir`: directory for temporary files (default: system temp directory)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Orca input and output files.
@@ -45,7 +47,7 @@ Base.show(io::IO, pm::Orca) = print(io, "Orca(⋯)")
 ### interface functions
 
 function UnderwaterAcoustics.arrivals(pm::Orca, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
-  mktempdir(prefix="orca_") do dirname
+  mktempdir(pm.temp_dir; prefix="orca_") do dirname
     D, n = _create_orca(pm, tx1, [rx1], dirname)::Tuple{Float64,Int}
     zs = range(0, D; length=n)
     _orca(dirname, pm.debug)
@@ -55,7 +57,7 @@ function UnderwaterAcoustics.arrivals(pm::Orca, tx1::AbstractAcousticSource, rx1
 end
 
 function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSource, rx::AcousticReceiverGrid2D)
-  fld = mktempdir(prefix="orca_") do dirname
+  fld = mktempdir(pm.temp_dir; prefix="orca_") do dirname
     _create_orca(pm, tx1, rx, dirname)
     _orca(dirname, pm.debug)
     x = _read_modes_tlc(dirname).fld
@@ -75,7 +77,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSourc
 end
 
 function UnderwaterAcoustics.acoustic_field(pm::Orca, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver)
-  fld = mktempdir(prefix="orca_") do dirname
+  fld = mktempdir(pm.temp_dir; prefix="orca_") do dirname
     _create_orca(pm, tx1, [rx1], dirname)
     _orca(dirname, pm.debug)
     _read_modes_tlc(dirname).fld

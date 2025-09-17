@@ -10,14 +10,15 @@ struct Bellhop{T} <: AbstractRayPropagationModel
   max_angle::Float32
   beam_type::Symbol
   beam_shift::Bool
+  temp_dir::String
   debug::Bool
-  function Bellhop(env, nbeams, min_angle, max_angle, beam_type, beam_shift, debug)
+  function Bellhop(env, nbeams, min_angle, max_angle, beam_type, beam_shift, temp_dir, debug)
     _check_env(Bellhop, env)
     -π/2 ≤ min_angle ≤ π/2 || error("min_angle should be between -π/2 and π/2")
     -π/2 ≤ max_angle ≤ π/2 || error("max_angle should be between -π/2 and π/2")
     min_angle < max_angle || error("max_angle should be more than min_angle")
     beam_type ∈ (:geometric, :gaussian) || error("Unknown beam_type type")
-    new{typeof(env)}(env, max(nbeams, 0), Float32(in_units(u"rad", min_angle)), Float32(in_units(u"rad", max_angle)), beam_type, beam_shift, debug)
+    new{typeof(env)}(env, max(nbeams, 0), Float32(in_units(u"rad", min_angle)), Float32(in_units(u"rad", max_angle)), beam_type, beam_shift, temp_dir, debug)
   end
 end
 
@@ -32,19 +33,22 @@ Supported keyword arguments:
 - `max_angle`: maximum beam angle (default: 80°)
 - `beam_type`: `geometric` (default) or `gaussian`
 - `beam_shift`: use beam shift (default: false)
+- `temp_dir`: directory for temporary files (default: system temp directory)
 - `debug`: debug mode (default: false)
 
 Enabling debug mode will create a temporary directory with the Bellhop input and output files.
 This allows manual inspection of the files.
 """
-Bellhop(env; nbeams=0, min_angle=-80°, max_angle=80°, beam_type=:geometric, beam_shift=false, debug=false) = Bellhop(env, nbeams, min_angle, max_angle, beam_type, beam_shift, debug)
+function Bellhop(env; nbeams=0, min_angle=-80°, max_angle=80°, beam_type=:geometric, beam_shift=false, temp_dir=tempdir(), debug=false)
+  Bellhop(env, nbeams, min_angle, max_angle, beam_type, beam_shift, temp_dir, debug)
+end
 
 Base.show(io::IO, pm::Bellhop) = print(io, "Bellhop(⋯)")
 
 ### interface functions
 
 function UnderwaterAcoustics.arrivals(pm::Bellhop, tx1::AbstractAcousticSource, rx1::AbstractAcousticReceiver; paths=true)
-  mktempdir(prefix="bellhop_") do dirname
+  mktempdir(pm.temp_dir; prefix="bellhop_") do dirname
     nbeams = pm.nbeams
     nbeams == 0 && (nbeams = round(Int, (pm.max_angle - pm.min_angle) / deg2rad(0.05)) + 1)
     _write_env(pm, tx1, [rx1], dirname; nbeams, taskcode='A')
@@ -76,7 +80,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
   else
     error("Unknown mode :" * string(mode))
   end
-  fld = mktempdir(prefix="bellhop_") do dirname
+  fld = mktempdir(pm.temp_dir; prefix="bellhop_") do dirname
     xrev, zrev = _write_env(pm, tx1, rx, dirname; taskcode)
     _bellhop(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"); xrev, zrev)
@@ -94,7 +98,7 @@ function UnderwaterAcoustics.acoustic_field(pm::Bellhop, tx1::AbstractAcousticSo
   else
     error("Unknown mode :" * string(mode))
   end
-  fld = mktempdir(prefix="bellhop_") do dirname
+  fld = mktempdir(pm.temp_dir; prefix="bellhop_") do dirname
     _write_env(pm, tx1, [rx1], dirname; taskcode)
     _bellhop(dirname, pm.debug)
     _read_shd(joinpath(dirname, "model.shd"))[1]
@@ -109,7 +113,7 @@ end
 Compute ray trace for a single transmitter.
 """
 function rays(pm::Bellhop, tx1::AbstractAcousticSource, max_range::Real, nbeams::Int=pm.nbeams)
-  mktempdir(prefix="bellhop_") do dirname
+  mktempdir(pm.temp_dir; prefix="bellhop_") do dirname
     _write_env(pm, tx1, [AcousticReceiver(max_range, 0)], dirname; nbeams, taskcode='R')
     _bellhop(dirname, pm.debug)
     _read_rays(joinpath(dirname, "model.ray"))
