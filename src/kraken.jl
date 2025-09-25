@@ -159,7 +159,7 @@ function _field(dirname, debug)
   infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(ignorestatus(Cmd(`$(AcousticsToolbox_jll.field()) $infilebase`; dir=dirname)); stdout=outfilename, stderr=outfilename))
+    run(pipeline(ignorestatus(Cmd(`$(AcousticsToolbox_jll.field()) $infilebase`)); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Field run completed in $dirname, press ENTER to delete intermediate files..."
       readline()
