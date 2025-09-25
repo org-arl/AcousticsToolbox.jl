@@ -123,10 +123,9 @@ end
 ### helpers
 
 function _bellhop(dirname, debug)
-  infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(ignorestatus(`$(AcousticsToolbox_jll.bellhop()) $infilebase`); stdout=outfilename, stderr=outfilename))
+    run(pipeline(ignorestatus(Cmd(`$(AcousticsToolbox_jll.bellhop()) model`; dir=dirname)); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Bellhop run completed in $dirname, press ENTER to delete intermediate files..."
       readline()

@@ -135,11 +135,10 @@ function _check_env(::Type{Kraken}, env)
 end
 
 function _kraken(dirname, complex_solver, debug)
-  infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
     solver = complex_solver ? AcousticsToolbox_jll.krakenc() : AcousticsToolbox_jll.kraken()
-    run(pipeline(ignorestatus(`$solver $infilebase`); stdout=outfilename, stderr=outfilename))
+    run(pipeline(ignorestatus(Cmd(`$solver model`; dir=dirname)); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Kraken run completed in $dirname, press ENTER to delete intermediate files..."
       readline()
@@ -156,10 +155,9 @@ function _kraken(dirname, complex_solver, debug)
 end
 
 function _field(dirname, debug)
-  infilebase = joinpath(dirname, "model")
   outfilename = joinpath(dirname, "output.txt")
   try
-    run(pipeline(ignorestatus(Cmd(`$(AcousticsToolbox_jll.field()) $infilebase`)); stdout=outfilename, stderr=outfilename))
+    run(pipeline(ignorestatus(Cmd(`$(AcousticsToolbox_jll.field()) model`; dir=dirname)); stdout=outfilename, stderr=outfilename))
     if debug
       @info "Field run completed in $dirname, press ENTER to delete intermediate files..."
       readline()
