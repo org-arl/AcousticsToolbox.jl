@@ -45,7 +45,7 @@ Enabling debug mode will create a temporary directory with the Kraken input and 
 This allows manual inspection of the files.
 
 The default `rmax` is set to `Inf`. With this setting, it actually uses a value
-10% more than furthest receiver. Setting `rmax` to 0 asks underlying FORTRAN
+1% more than furthest receiver. Setting `rmax` to 0 asks underlying FORTRAN
 Kraken model to automatically choose `rmax`. While the Kraken manual suggests
 it, we find that this option often gives poor results and do not recommend its use.
 """
