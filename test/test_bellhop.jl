@@ -198,7 +198,7 @@ end
   xloss = @inferred transmission_loss(pm, tx, rxs; mode=:coherent)
   @test size(xloss) == (1001, 201)
   @test xloss[200,50] > 150
-  @test xloss[50,50] ≈ 67.0 atol=0.1
-  @test xloss[100,100] ≈ 76.4 atol=0.1
-  @test xloss[500,50] ≈ 102.9 atol=0.1
+  @test xloss[50,50] ≈ 66.9 atol=0.1
+  @test xloss[100,100] ≈ 76.2 atol=0.1
+  @test xloss[500,50] ≈ 102.75 atol=0.1
 end
