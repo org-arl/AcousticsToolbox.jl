@@ -65,7 +65,7 @@ function _write_env(pm, tx1, rx, dirname; nbeams=0, taskcode=' ')
     waterdepth = maximum(bathy)
     @printf(io, "%0.1f %0.1f %0.1f %0.1f\n", env.temperature, env.salinity, env.pH, waterdepth/2)
     if surf == 'A'
-      @printf(io, "0.0 %0.6f 0.0 %0.6f %0.6f /\n", env.surface.c, env.surface.ρ / env.density, in_dBperλ(env.surface.δ))
+      @printf(io, "0.0 %0.6f 0.0 %0.6f %0.6f /\n", env.surface.c, env.surface.ρ / 1000, in_dBperλ(env.surface.δ))
     end
     if pm isa Kraken
       λ = maximum(ssp) / f
@@ -97,8 +97,8 @@ function _write_env(pm, tx1, rx, dirname; nbeams=0, taskcode=' ')
         λ = max(cₚ₁, cₛ₁, cₚ₂, cₛ₂) / f
         nmesh = round(Int, 2 * l.h / λ * pm.mesh_density)    # Kraken manual recommends double the number of mesh points for elastic media
         @printf(io, "%i %0.6f %0.6f\n", nmesh, l.σ, waterdepth + l.h)
-        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, cₚ₁, cₛ₁, ρ₁ / env.density, in_dBperλ(l.δₚ), in_dBperλ(l.δₛ))
-        @printf(io, "%0.6f %0.6f %0.6f %0.6f /\n", waterdepth + l.h, cₚ₂, cₛ₂, ρ₂ / env.density)
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, cₚ₁, cₛ₁, ρ₁ / 1000, in_dBperλ(l.δₚ), in_dBperλ(l.δₛ))
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f /\n", waterdepth + l.h, cₚ₂, cₛ₂, ρ₂ / 1000)
         waterdepth += l.h
       end
     end
@@ -118,9 +118,9 @@ function _write_env(pm, tx1, rx, dirname; nbeams=0, taskcode=' ')
     @printf(io, "' %0.6f\n", seabed.σ)
     if seabed !== RigidBoundary && seabed !== PressureReleaseBoundary
       if seabed isa ElasticBoundary
-        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, seabed.cₚ, seabed.cₛ, seabed.ρ / env.density, in_dBperλ(seabed.δₚ), in_dBperλ(seabed.δₛ))
+        @printf(io, "%0.6f %0.6f %0.6f %0.6f %0.6f %0.6f\n", waterdepth, seabed.cₚ, seabed.cₛ, seabed.ρ / 1000, in_dBperλ(seabed.δₚ), in_dBperλ(seabed.δₛ))
       else
-        @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, seabed.c, seabed.ρ / env.density, in_dBperλ(seabed.δ))
+        @printf(io, "%0.6f %0.6f 0.0 %0.6f %0.6f /\n", waterdepth, seabed.c, seabed.ρ / 1000, in_dBperλ(seabed.δ))
       end
     end
     if pm isa Kraken

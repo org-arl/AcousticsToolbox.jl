@@ -107,7 +107,7 @@ function _create_orca(pm, tx1, rx, dirname)
   open(svp_filename, "w") do io
     println(io, "*(1)\n3.0 '$name'")
     @printf(io, "*(2)\n%0.6f 0.0 %0.6f %0.6f 0.0 1.0 1.0\n",
-      _c(env.surface.c), _ρ(env.surface.ρ / env.density), -in_dBperλ(env.surface.δ))
+      _c(env.surface.c), _ρ(env.surface.ρ / 1000), -in_dBperλ(env.surface.δ))
     ssp = env.soundspeed
     f = frequency(tx1)
     att = -20*log10(absorption(f, 1, pm.env.salinity, pm.env.temperature, waterdepth/2, pm.env.pH)) / f * 1000
@@ -138,21 +138,21 @@ function _create_orca(pm, tx1, rx, dirname)
         aₚ = in_dBperλ(l.δₚ)
         aₛ = in_dBperλ(l.δₛ)
         @printf(io, "1 %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f %0.6f 0 0 1 1\n",
-          l.h, _c(cₚ₁), _c(cₚ₂), cₛ₁, cₛ₂, _ρ(ρ₁ / env.density), _ρ(ρ₂ / env.density), -aₚ, -aₚ, -aₛ, -aₛ)
+          l.h, _c(cₚ₁), _c(cₚ₂), cₛ₁, cₛ₂, _ρ(ρ₁ / 1000), _ρ(ρ₂ / 1000), -aₚ, -aₚ, -aₛ, -aₛ)
         maxdepth += l.h
       end
       b = env.seabed.layers[end]
       @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f 1 1\n",
-        _c(b.cₚ), b.cₛ, _ρ(b.ρ / env.density), -in_dBperλ(b.δₚ), -in_dBperλ(b.δₛ))
+        _c(b.cₚ), b.cₛ, _ρ(b.ρ / 1000), -in_dBperλ(b.δₚ), -in_dBperλ(b.δₛ))
     elseif env.seabed isa ElasticBoundary
       println(io, "*(5)\n0\n*(6)")
       @printf(io, "*(7)\n%0.6f %0.6f %0.6f %0.6f %0.6f 1 1\n",
-        _c(env.seabed.cₚ), env.seabed.cₛ, _ρ(env.seabed.ρ / env.density),
+        _c(env.seabed.cₚ), env.seabed.cₛ, _ρ(env.seabed.ρ / 1000),
         -in_dBperλ(env.seabed.δₚ), -in_dBperλ(env.seabed.δₛ))
     else
       println(io, "*(5)\n0\n*(6)")
       @printf(io, "*(7)\n%0.6f 0.0 %0.6f %0.6f 0.0 1 1\n",
-        _c(env.seabed.c), _ρ(env.seabed.ρ / env.density), -in_dBperλ(env.seabed.δ))
+        _c(env.seabed.c), _ρ(env.seabed.ρ / 1000), -in_dBperλ(env.seabed.δ))
     end
     println(io, "*(8)\n0\n*(9)")
   end
