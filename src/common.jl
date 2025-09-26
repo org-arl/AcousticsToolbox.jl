@@ -125,7 +125,7 @@ function _write_env(pm, tx1, rx, dirname; nbeams=0, taskcode=' ')
     end
     if pm isa Kraken
       @printf(io, "%0.6f  %0.6f\n", pm.clow, pm.chigh)
-      @printf(io, "%0.6f\n", 1.01 * maxr / 1000.0)
+      @printf(io, "%0.6f\n", pm.rmax / 1000.0)
     end
     _print_array(io, [-location(tx1).z])
     if length(rx) == 1
