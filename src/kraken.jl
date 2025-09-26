@@ -35,7 +35,7 @@ Supported keyword arguments:
 - `mesh_density`: number of mesh points per wavelength (default: 0, 0=auto)
 - `clow`: lower limit of phase speed (default: 1300, 0=auto)
 - `chigh`: upper limit of phase speed (default: 2500)
-- `rmax`: largest range (in m) for field calculations (default: 0, 0=auto)
+- `rmax`: largest range (in m) of interest (default: Inf)
 - `complex_solver`: use KrakenC for finding modes (default: true)
 - `robust`: use robust (but slow) root finder (default: false)
 - `temp_dir`: directory for temporary files (default: system temp directory)
@@ -43,8 +43,13 @@ Supported keyword arguments:
 
 Enabling debug mode will create a temporary directory with the Kraken input and output files.
 This allows manual inspection of the files.
+
+The default `rmax` is set to `Inf`. With this setting, it actually uses a value
+10% more than furthest receiver. Setting `rmax` to 0 asks underlying FORTRAN
+Kraken model to automatically choose `rmax`. While the Kraken manual suggests
+it, we find that this option often gives poor results and do not recommend its use.
 """
-function Kraken(env; nmodes=9999, mesh_density=0, clow=1300.0, chigh=2500.0, rmax=0.0, complex_solver=true, robust=false, temp_dir=tempdir(), debug=false)
+function Kraken(env; nmodes=9999, mesh_density=0, clow=1300.0, chigh=2500.0, rmax=Inf, complex_solver=true, robust=false, temp_dir=tempdir(), debug=false)
   Kraken(env, nmodes, mesh_density, clow, chigh, rmax, complex_solver, robust, temp_dir, debug)
 end
 
