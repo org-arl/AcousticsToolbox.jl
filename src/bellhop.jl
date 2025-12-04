@@ -144,6 +144,5 @@ end
 function _check_env(::Type{Bellhop}, env)
   env.seabed isa FluidBoundary || env.seabed isa ElasticBoundary || error("seabed must be a FluidBoundary or ElasticBoundary")
   env.surface isa FluidBoundary || error("surface must be a FluidBoundary")
-  is_range_dependent(env.soundspeed) && error("Range-dependent soundspeed not supported")
   nothing
 end

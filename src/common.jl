@@ -53,6 +53,7 @@ function _write_env(pm, tx1, rx, dirname; nbeams=0, taskcode=' ')
     ssp = env.soundspeed
     sspi = 'C'
     ssp isa SampledFieldZ && ssp.interp === CubicSpline() && (sspi = 'S')
+    ssp isa SampledFieldXZ && (sspi = 'Q')
     surf = env.surface === RigidBoundary ? 'R' : env.surface === PressureReleaseBoundary ? 'V' : 'A'
     print(io, "'", sspi, surf, "WF")  # bottom attenuation in dB/wavelength, Francois-Garrison volume attenuation
     pm isa Kraken && pm.robust && print(io, ".")
@@ -77,6 +78,14 @@ function _write_env(pm, tx1, rx, dirname; nbeams=0, taskcode=' ')
     if is_constant(ssp)
       @printf(io, "0.0 %0.6f /\n", value(ssp))
       @printf(io, "%0.6f %0.6f /\n", waterdepth, value(ssp))
+    elseif ssp isa SampledFieldXZ
+      zrange = sort!(vcat(collect(ssp.zrange), -waterdepth); rev=true)
+      i = findfirst(==(-waterdepth), zrange)
+      i === nothing || (zrange = zrange[1:i])
+      for z ∈ zrange
+        @printf(io, "%0.6f %0.6f /\n", -z, ssp(0, z))
+      end
+      _create_ssp_file(joinpath(dirname, "model.ssp"), ssp, zrange)
     elseif ssp isa SampledFieldZ
       zrange = sort!(vcat(collect(ssp.zrange), -waterdepth); rev=true)
       for z ∈ zrange
@@ -185,6 +194,23 @@ function _create_alt_bathy_file(filename, data, func, maxr, f)
     println(io, length(x))
     for i ∈ 1:length(x)
       @printf(io, "%0.6f %0.6f\n", x[i]/1000.0, func(data, (x[i], 0.0)))
+    end
+  end
+end
+
+function _create_ssp_file(filename, ssp::SampledFieldXZ, zrange)
+  open(filename, "w") do io
+    xrange = sort!(collect(ssp.xrange))
+    println(io, length(xrange))
+    for x ∈ xrange
+      @printf(io, "%0.6f ", x/1000)
+    end
+    println(io)
+    for z ∈ zrange
+      for x ∈ xrange
+        @printf(io, "%0.6f ", ssp(x, z))
+      end
+      println(io)
     end
   end
 end
