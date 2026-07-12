@@ -15,7 +15,9 @@ Currently, the following models are supported:
 - Kraken 2D normal mode model
 - Orca 2D normal mode model
 - BellhopJL — a native Julia port of the 2D Bellhop Gaussian beam tracer
-  (no file I/O, ForwardDiff-differentiable)
+  (no file I/O, ForwardDiff-differentiable; see
+  [src/bellhopjl/PORTING_NOTES.md](src/bellhopjl/PORTING_NOTES.md) for the
+  port's provenance and deviations from the Fortran)
 
 For information on how to use the models, see [documentation](https://org-arl.github.io/UnderwaterAcoustics.jl/).
 
@@ -29,7 +31,9 @@ This package is dual-licensed on a per-directory basis:
   [A-New-BellHope](https://github.com/A-New-BellHope/bellhop) changes © 2021–2023
   The Regents of the University of California) — and is licensed under
   [GPL-3.0-or-later](LICENSE-GPL-3.0). Each file in that directory carries an
-  `SPDX-License-Identifier: GPL-3.0-or-later` header.
+  `SPDX-License-Identifier: GPL-3.0-or-later` header. The port's lineage and
+  every intentional deviation from the Fortran are documented in
+  [src/bellhopjl/PORTING_NOTES.md](src/bellhopjl/PORTING_NOTES.md).
 
 Note that this package already downloads and executes the GPL-licensed OALIB
 Fortran binaries (via `AcousticsToolbox_jll`) for the `Bellhop`/`Kraken` models, so
