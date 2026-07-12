@@ -252,8 +252,8 @@ function _read_grp(pm::Kraken, dirname)
       f = split(strip(s[i]), r" +")
       length(f) == 5 || break
       push!(m, parse(Int, f[1]))
-      push!(kᵣ, parse(Float32, f[2]))
-      push!(v, parse(Float32, f[5]))
+      push!(kᵣ, _parse_fortran_float(Float32, f[2]))
+      push!(v, _parse_fortran_float(Float32, f[5]))
       i += 1
     end
   end
