@@ -20,6 +20,14 @@ abstract type AbstractSSP{T<:Real} end
 Base.eltype(::AbstractSSP{T}) where {T} = T
 
 """
+True if the SSP has a discontinuous first derivative at layer interfaces, so
+the ray-tracing p-jump correction applies. OALIB 2024 Step2D (Step.f90) gates
+the interface jump on SSP type: 'N'/'C' (and 'Q'/'H') yes; 'S'/'P'/'A' (C¹
+profiles) no.
+"""
+has_gradcjump(::AbstractSSP) = true
+
+"""
     update_seg(z, zq, tz, iseg) -> iseg′
 
 Depth-segment update with the tangent-direction-aware edge-case handling of
@@ -198,3 +206,6 @@ end
     fxx = s.coef[3, i] + h * s.coef[4, i]
     SSPEval(real(f), imag(f), real(fx), real(fxx)), i
 end
+
+# C¹ SSPs get no interface jump (OALIB 2024 Step2D, Step.f90)
+has_gradcjump(::SplineSSP) = false

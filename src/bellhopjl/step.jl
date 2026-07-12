@@ -224,7 +224,9 @@ function step2d(env::Env2D, ray0::RayPt{T}, iSegz::Int, topg, botg, box,
     e2, iSegz = evalssp(env, x2, t2, iSegz)
 
     # if we crossed an interface, apply jump condition on p
-    if iSegz != iSegz0 && !iszero(t2[2])
+    # (OALIB 2024 Step2D, Step.f90: only for SSPs with a discontinuous first
+    # derivative — 'N'/'C'; spline/PCHIP/analytic profiles are C¹ and get none)
+    if has_gradcjump(env.ssp) && iSegz != iSegz0 && !iszero(t2[2])
         gradcjump = SVector(zero(e2.cz), e2.cz - e0.cz)
         ray2n = SVector(-t2[2], t2[1])
         cnjump = dot(gradcjump, ray2n)
