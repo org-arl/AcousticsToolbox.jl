@@ -14,4 +14,11 @@ include("kraken.jl")
 include("orca.jl")
 include("common.jl")
 
+# BellhopJL (native Julia port of Bellhop) lives in an internal submodule;
+# note that unlike the rest of this package (MIT), src/bellhopjl/** is
+# GPL-3.0-or-later (see LICENSE-GPL-3.0)
+include("bellhopjl/BellhopJLCore.jl")
+using .BellhopJLCore: BellhopJL
+export BellhopJL
+
 end # module
