@@ -215,6 +215,16 @@ function _create_ssp_file(filename, ssp::SampledFieldXZ, zrange)
   end
 end
 
+# Fortran formatted output drops the 'E' when an exponent needs 3 digits
+# (e.g. "0.690555-309" means 0.690555E-309)
+function _parse_fortran_float(T, s)
+  x = tryparse(T, s)
+  x === nothing || return x
+  m = match(r"^([+-]?[0-9]*\.?[0-9]+)([+-][0-9]+)$", s)
+  m === nothing && throw(ArgumentError("cannot parse \"$s\" as $T"))
+  T(parse(BigFloat, m[1] * "e" * m[2]))
+end
+
 function _read_rays(filename)
   rays = RayArrival{Float64,Float64}[]
   open(filename, "r") do io
