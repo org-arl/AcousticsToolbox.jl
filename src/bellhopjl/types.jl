@@ -40,9 +40,9 @@ end
 
 @enum RunMode COHERENT INCOHERENT SEMICOHERENT ARRIVALS
 
-# bellhopMod.f90: MaxN = 100000 (max # of steps along a ray);
+# bellhopMod.f90 (OALIB 2024): MaxN = 1000000 (max # of steps along a ray);
 # TraceRay2D exits at is >= MaxN - 3.
-const MAX_N = 100_000
+const MAX_N = 1_000_000
 
 # Step.f90: INFINITESIMAL_STEP_SIZE = 1.0d-6
 const INFINITESIMAL_STEP_SIZE = 1.0e-6

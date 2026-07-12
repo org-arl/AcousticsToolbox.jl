@@ -178,9 +178,12 @@ function influence_geo_cart!(sink::InfluenceSink, ray::Vector{RayPt{T}}, α, Δ�
                             cnst = ratio1 * sqrt(ray[is].c / abs(q)) * ray[is].amp
                             w = exp(-(n / sigma)^2 / 2) / (sigma * A)
                             amp = cnst * w
-                            # FinalPhase (Gaussian reads phase from current point)
-                            phaseInt = _is_at_caustic(q, qOld) ?
-                                phase + T(π) / 2 : ray[is].phase + phase
+                            # OALIB 2024 InfluenceGeoGaussianCart (influence.f90):
+                            # ray phase read from the previous point (consistent
+                            # with hat) and the caustic π/2 is additive (the 2022
+                            # code discarded the accumulated phase)
+                            phaseInt = ray[is-1].phase + phase
+                            _is_at_caustic(q, qOld) && (phaseInt += T(π) / 2)
                             apply_contribution!(sink, iz, ir, amp, w, cnst,
                                                 phaseInt, delay, ω, true,
                                                 srcang, rcvang,
@@ -193,9 +196,11 @@ function influence_geo_cart!(sink::InfluenceSink, ray::Vector{RayPt{T}}, α, Δ�
                             cnst = ratio1 * sqrt(ray[is].c / abs(q)) * ray[is].amp
                             w = (radius - n) / radius     # hat function
                             amp = cnst * w
-                            # FinalPhase (hat reads phase from previous point)
-                            phaseInt = _is_at_caustic(q, qOld) ?
-                                phase + T(π) / 2 : ray[is-1].phase + phase
+                            # OALIB 2024 InfluenceGeoHatCart (influence.f90):
+                            # caustic π/2 is additive, no longer discarding the
+                            # accumulated ray phase
+                            phaseInt = ray[is-1].phase + phase
+                            _is_at_caustic(q, qOld) && (phaseInt += T(π) / 2)
                             apply_contribution!(sink, iz, ir, amp, w, cnst,
                                                 phaseInt, delay, ω, false,
                                                 srcang, rcvang,
