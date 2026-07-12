@@ -25,6 +25,8 @@ Supported keyword arguments:
 - `min_angle`: minimum beam angle (default: -80°)
 - `max_angle`: maximum beam angle (default: 80°)
 - `beam_type`: `:geometric` (default) or `:gaussian`
+- `threads`: number of threads for the beam loop (default: `Threads.nthreads()`;
+  1 runs the serial code path)
 """
 struct BellhopJL{T} <: AbstractRayPropagationModel
     env::T
@@ -32,7 +34,8 @@ struct BellhopJL{T} <: AbstractRayPropagationModel
     min_angle::Float64      # [rad], UA convention (positive up)
     max_angle::Float64
     gaussian::Bool
-    function BellhopJL(env, nbeams, min_angle, max_angle, beam_type)
+    threads::Int
+    function BellhopJL(env, nbeams, min_angle, max_angle, beam_type, threads)
         env.seabed isa FluidBoundary ||
             error("seabed must be a FluidBoundary")
         env.surface isa FluidBoundary ||
@@ -43,13 +46,15 @@ struct BellhopJL{T} <: AbstractRayPropagationModel
         -π/2 ≤ max_angle ≤ π/2 || error("max_angle should be between -π/2 and π/2")
         min_angle < max_angle || error("max_angle should be more than min_angle")
         beam_type ∈ (:geometric, :gaussian) || error("Unknown beam_type type")
+        threads ≥ 1 || error("threads should be at least 1")
         new{typeof(env)}(env, max(nbeams, 0), Float64(min_angle),
-                         Float64(max_angle), beam_type === :gaussian)
+                         Float64(max_angle), beam_type === :gaussian, threads)
     end
 end
 
-BellhopJL(env; nbeams=0, min_angle=-80°, max_angle=80°, beam_type=:geometric) =
-    BellhopJL(env, nbeams, min_angle, max_angle, beam_type)
+BellhopJL(env; nbeams=0, min_angle=-80°, max_angle=80°, beam_type=:geometric,
+          threads=Threads.nthreads()) =
+    BellhopJL(env, nbeams, min_angle, max_angle, beam_type, threads)
 
 Base.show(io::IO, pm::BellhopJL) = print(io, "BellhopJL(⋯)")
 
@@ -175,7 +180,8 @@ function UnderwaterAcoustics.acoustic_field(pm::BellhopJL,
     rxz = [-z for z in rxs.zrange]
     maxr = maximum(rxs.xrange)
     env2d, zs, beam = _make_env2d(pm, tx, maxr)
-    U = pressure_field(env2d, zs, rxr, rxz, beam, runmode)   # (nz, nr)
+    U = pressure_field(env2d, zs, rxr, rxz, beam, runmode;
+                       ntasks=pm.threads)                    # (nz, nr)
     fld = -permutedims(U) .* db2amp(spl(tx))                 # (nr, nz)
     xrev ? reverse(fld; dims=1) : fld
 end
@@ -186,7 +192,7 @@ function UnderwaterAcoustics.acoustic_field(pm::BellhopJL,
     runmode = _runmode(mode)
     p = location(rx)
     env2d, zs, beam = _make_env2d(pm, tx, p.x)
-    U = pressure_field(env2d, zs, [p.x], [-p.z], beam, runmode)
+    U = pressure_field(env2d, zs, [p.x], [-p.z], beam, runmode; ntasks=pm.threads)
     -U[1, 1] * db2amp(spl(tx))
 end
 
@@ -199,12 +205,17 @@ function UnderwaterAcoustics.arrivals(pm::BellhopJL,
         (nbeams = round(Int, (pm.max_angle - pm.min_angle) / deg2rad(0.05)) + 1)
     env2d, zs, beam = _make_env2d(pm, tx, p.x; nbeams)
     f = env2d.freq
-    arr = compute_arrivals(env2d, zs, [p.x], [-p.z], beam)[1, 1]
+    arr = compute_arrivals(env2d, zs, [p.x], [-p.z], beam; ntasks=pm.threads)[1, 1]
+    # merged arrivals often share a take-off angle; trace each eigenray once
+    T = fieldtype(eltype(arr), :amp)
+    paths_by_angle = Dict{T,Vector{@NamedTuple{x::T, y::T, z::T}}}()
     out = map(arr) do a
         ϕ = a.amp * cis(a.phase) * exp(2π * f * imag(a.delay))
         path = if paths
-            ray = trace_ray(env2d, a.src_angle, zs, beam)
-            [(x=pt.x[1], y=zero(pt.x[1]), z=-pt.x[2]) for pt in ray]
+            get!(paths_by_angle, a.src_angle) do
+                ray = trace_ray(env2d, a.src_angle, zs, beam)
+                [(x=pt.x[1], y=zero(pt.x[1]), z=-pt.x[2]) for pt in ray]
+            end
         else
             missing
         end

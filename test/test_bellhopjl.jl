@@ -160,3 +160,30 @@ end
   tl2c = transmission_loss(Bellhop(env), tx, rxs)
   @test median(abs.(tl1c .- tl2c)) < 0.1
 end
+
+@testitem "bellhopjl-threads" begin
+  using UnderwaterAcoustics
+  # serial vs threaded results must agree (bitwise-reproducible per thread
+  # count; serial vs threaded differ only by floating-point reassociation)
+  env = UnderwaterEnvironment(bathymetry = 100.0, soundspeed = 1500.0,
+    seabed = FluidBoundary(1900.0, 1650.0, 0.0))
+  tx = AcousticSource(0.0, -25.0, 500.0)
+  rxs = AcousticReceiverGrid2D(range(200.0, 5000.0; length=120),
+                               range(-95.0, -5.0; length=45))
+  pm1 = BellhopJL(env; threads=1)
+  pm4 = BellhopJL(env; threads=4)
+  @test_throws ErrorException BellhopJL(env; threads=0)
+  x1 = acoustic_field(pm1, tx, rxs)
+  x4 = acoustic_field(pm4, tx, rxs)
+  @test x4 == acoustic_field(pm4, tx, rxs)       # deterministic
+  @test isapprox(x1, x4; rtol=1e-10, nans=true)
+  y1 = acoustic_field(pm1, tx, rxs; mode=:incoherent)
+  y4 = acoustic_field(pm4, tx, rxs; mode=:incoherent)
+  @test isapprox(y1, y4; rtol=1e-10, nans=true)
+  rx = AcousticReceiver(1000.0, -60.0)
+  a1 = arrivals(pm1, tx, rx)
+  a4 = arrivals(pm4, tx, rx)
+  @test length(a1) == length(a4)
+  @test all(isapprox(a1[j].t, a4[j].t; atol=1e-12) for j in eachindex(a1))
+  @test all(isapprox(a1[j].ϕ, a4[j].ϕ; rtol=1e-8) for j in eachindex(a1))
+end

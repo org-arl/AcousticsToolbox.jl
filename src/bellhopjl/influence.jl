@@ -119,7 +119,7 @@ function influence_geo_cart!(sink::InfluenceSink, ray::Vector{RayPt{T}}, α, Δ�
     BeamWindow = 4      # Gaussian beam window: kills beams outside e^(-0.5 w²)
     srcang = T(α)
 
-    for is in 2:nsteps
+    @inbounds for is in 2:nsteps
         rB = ray[is].x[1]
         x_ray = ray[is-1].x
 

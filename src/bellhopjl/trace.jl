@@ -65,6 +65,20 @@ Fortran.
 function trace_ray(env::Env2D, α, zs, beam::BeamParams; amp0=1)
     T = promote_type(env_eltype(env), typeof(float(α)), typeof(float(zs)),
                      typeof(beam.deltas), typeof(float(amp0)))
+    hist = Vector{RayPt{T}}()
+    sizehint!(hist, 2000)
+    trace_ray!(hist, env, α, zs, beam; amp0)
+end
+
+"""
+    trace_ray!(hist, env, α, zs, beam; amp0=1) -> hist
+
+In-place variant of [`trace_ray`](@ref): empties `hist` and fills it with the
+traced ray, so one buffer can be reused across the beam loop.
+"""
+function trace_ray!(hist::Vector{RayPt{T}}, env::Env2D, α, zs,
+                    beam::BeamParams; amp0=1) where {T}
+    empty!(hist)
     ω = 2π * env.freq
     deltas = T(beam.deltas)
     box = (r = T(beam.box_r), z = T(beam.box_z))
@@ -79,8 +93,6 @@ function trace_ray(env::Env2D, α, zs, beam::BeamParams; amp0=1)
     # q initialised to (0,0): TraceRay2D sets q = 0 for geometric beam runs
     # ('G'); the (p₂,q₂) plane-wave pair is decoupled from (p₁,q₁) and unused
     # by the geometric influence functions, so this also matches 'B' runs.
-    hist = Vector{RayPt{T}}()
-    sizehint!(hist, 2000)
     push!(hist, ray)
 
     iTop = get_seg(env.top, xs[1], ray.t[1])

@@ -106,6 +106,23 @@ unchanged between 2022_4 and 2024_12_25.
   guard; the Fortran would divide by zero).
 - `AddArr` merges against the *last* arrival only, with `PhaseTol = 0.05` —
   Fortran behaviour retained for parity (flagged as a bug by A-New-BellHope).
+- **Ray-history buffer reuse** — `TraceRay2D`'s ray storage is a fresh
+  `Vector{RayPt}` per beam in the naive port; `trace_ray!` reuses one buffer
+  across the beam loop (the Fortran uses a single static `ray2D` array, so
+  this is actually *closer* to the original).
+- **Multithreaded beam loop** — the beam loop of `BellhopCore` is optionally
+  split into contiguous chunks across threads (`threads` kwarg of `BellhopJL`,
+  default `Threads.nthreads()`). Each chunk has its own field accumulator /
+  arrival sink; per-chunk fields are summed in chunk order (deterministic for
+  a fixed thread count, differs from serial only by floating-point
+  reassociation), and per-chunk arrival lists are replayed through `add_arr!`
+  in beam order to preserve the serial merge semantics. `threads=1` runs the
+  identical serial path.
+- **Eigenray retrace memoization** — `arrivals` traces each *unique* take-off
+  angle once when extracting ray paths (merged arrivals share angles); the
+  Fortran writes ray files in a separate run and has no equivalent step.
+- `@inbounds` on the influence receiver loop and SSP segment scan (bounds
+  are guaranteed by the monotone pointer walk / segment clamping).
 
 ## 4. Validation provenance
 
