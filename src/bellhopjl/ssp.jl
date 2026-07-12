@@ -36,7 +36,7 @@ Depth-segment update with the tangent-direction-aware edge-case handling of
 """
 @inline function update_seg(z::AbstractVector, zq, tz, iseg::Int)
     n = length(z)
-    if tz >= 0
+    @inbounds if tz >= 0
         while zq < z[iseg] && iseg > 1
             iseg -= 1
         end
