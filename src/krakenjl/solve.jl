@@ -450,6 +450,15 @@ kraken.f90 / krakenc.f90). `ngs` are the base mesh counts per medium.
 function solve_modes(prob::Problem{T}, ngs::Vector{Int};
                      complex_solver::Bool=true, robust::Bool=false,
                      threads::Int=1) where {T}
+    _solve_modes_core(prob, ngs; complex_solver, robust, threads).res
+end
+
+# Core driver, additionally returning the per-mesh eigenvalues (`evmat`), the
+# per-mesh mode counts after the spectral trim (`ms`) and the number of
+# meshes used — needed by the ForwardDiff dual-correction pass (dual.jl).
+function _solve_modes_core(prob::Problem{T}, ngs::Vector{Int};
+                           complex_solver::Bool=true, robust::Bool=false,
+                           threads::Int=1) where {T}
     X = complex_solver ? Complex{T} : T
     nmedia = length(prob.media)
     w = MeshWorkspace{T,X}(nmedia)
@@ -467,8 +476,11 @@ function solve_modes(prob::Problem{T}, ngs::Vector{Int};
     M = 0
     err = T(Inf)
     no_elastic_layers = true
+    ms = zeros(Int, NSETS)      # M after the spectral trim, per mesh
+    nsets_used = 0
 
     for iset in 1:NSETS
+        nsets_used = iset
         for m in 1:nmedia
             w.n[m] = ngs[m] * NV[iset]
             w.h[m] = (prob.media[m].z1 - prob.media[m].z0) / w.n[m]
@@ -516,6 +528,7 @@ function solve_modes(prob::Problem{T}, ngs::Vector{Int};
         end
         M = Mtrim
         M == 0 && error("KrakenJL: No modes for given phase speed interval")
+        ms[iset] = M
 
         if iset == 1     # compute the eigenvectors on the first mesh
             phi, zmesh = vector!(w, prob, evmat, kpert, vg, M, complex_solver,
@@ -557,5 +570,6 @@ function solve_modes(prob::Problem{T}, ngs::Vector{Int};
         k = [imag(ki) > 0 ? Complex{T}(real(ki)) : ki for ki in k]
     end
 
-    ModeResult{T}(k, phi[:, 1:M], zmesh, vg[1:M])
+    (res=ModeResult{T}(k, phi[:, 1:M], zmesh, vg[1:M]),
+     evmat=evmat, ms=ms, nsets_used=nsets_used, M=M)
 end

@@ -128,3 +128,35 @@ end
   @test [a.kᵣ for a ∈ a1] == [a.kᵣ for a ∈ a4]
   @test all([a1[i].ψ(-100.0) == a4[i].ψ(-100.0) for i ∈ eachindex(a1)])
 end
+
+@testitem "∂krakenjl" begin
+  using UnderwaterAcoustics
+  using ForwardDiff
+  using FiniteDifferences
+  # gradient of TL w.r.t. bathymetry, range, source/receiver depth, frequency
+  # and sound speed; generic values avoid mesh-node/integer-depth kinks where
+  # the finite-difference reference straddles model discontinuities
+  function ℳ(x)
+    D, R, d1, d2, f, c = x
+    env = UnderwaterEnvironment(bathymetry=D, soundspeed=c, density=1000.0,
+                                seabed=FluidBoundary(2000.0, 2000.0))
+    pm = KrakenJL(env; chigh=2000.0)
+    transmission_loss(pm, AcousticSource(0.0, -d1, f), AcousticReceiver(R, -d2))
+  end
+  x0 = [4987.3, 199234.7, 511.4, 2483.9, 10.3, 1501.7]
+  g1 = ForwardDiff.gradient(ℳ, x0)
+  g2 = FiniteDifferences.grad(central_fdm(5, 1), ℳ, x0)[1]
+  @test g1 ≈ g2 rtol=1e-3
+  # real (KRAKEN) solver, seabed parameters
+  function ℳ2(x)
+    cb, ρb, δb = x
+    env = UnderwaterEnvironment(bathymetry=4987.3, soundspeed=1500.0, density=1000.0,
+                                seabed=FluidBoundary(ρb, cb, δb))
+    pm = KrakenJL(env; chigh=1999.0, complex_solver=false)
+    transmission_loss(pm, AcousticSource(0.0, -511.4, 10.3), AcousticReceiver(199234.7, -2483.9))
+  end
+  y0 = [2000.0, 2000.0, 0.1]
+  h1 = ForwardDiff.gradient(ℳ2, y0)
+  h2 = FiniteDifferences.grad(central_fdm(5, 1), ℳ2, y0)[1]
+  @test h1 ≈ h2 rtol=1e-3
+end

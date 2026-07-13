@@ -78,6 +78,30 @@ function _check_krakenjl_env(env)
     nothing
 end
 
+# promoted scalar type for the solve, so ForwardDiff duals in the frequency,
+# soundspeed, bathymetry or boundary parameters flow through
+function _kj_eltype(env, f)
+    T = promote_type(typeof(float(f)), typeof(float(maximum(env.bathymetry))),
+                     typeof(float(maximum(env.soundspeed))), Float64)
+    for b in (env.surface, env.seabed)
+        if b isa FluidBoundary
+            T = promote_type(T, typeof(float(b.c)), typeof(float(b.ρ)),
+                             typeof(float(b.δ)))
+        elseif b isa ElasticBoundary
+            T = promote_type(T, typeof(float(b.cₚ)), typeof(float(b.cₛ)),
+                             typeof(float(b.ρ)), typeof(float(b.δₚ)),
+                             typeof(float(b.δₛ)))
+        elseif b isa MultilayerElasticBoundary
+            for l in b.layers
+                T = promote_type(T, typeof(float(first(l.cₚ))),
+                                 typeof(float(first(l.cₛ))),
+                                 typeof(float(first(l.ρ))), typeof(float(l.h)))
+            end
+        end
+    end
+    T
+end
+
 # nominal half-wavelength sampling (mirrors _recommend_len, src/common.jl)
 function _kj_recommend_len(x, f)
     λ = 1500.0 / f
@@ -87,8 +111,7 @@ end
 # UA boundary → Halfspace. Unit conversions mirror _write_env (src/common.jl):
 # density ratio ρ/1000 (g/cm³), attenuation in dB/λ, Francois-Garrison volume
 # attenuation applied through crci as the Fortran CRCI does for AttenUnit 'WF'
-function _kj_halfspace(b, f, fg)
-    T = Float64
+function _kj_halfspace(::Type{T}, b, f, fg) where {T}
     if b === RigidBoundary
         Halfspace{T}(:rigid)
     elseif b === PressureReleaseBoundary
@@ -117,11 +140,11 @@ source and receiver extent. Mirrors the Kraken blocks of `_write_env`
 (src/common.jl) and the auto-mesh rule of ReadEnvironmentMod.f90.
 """
 function _make_problem(pm::KrakenJL, tx, maxr)
-    T = Float64
     env = pm.env
     f = float(frequency(tx))
+    T = _kj_eltype(env, f)
     ssp = env.soundspeed
-    waterdepth = float(maximum(env.bathymetry))
+    waterdepth = T(maximum(env.bathymetry))
     fg = FrancoisGarrison(float(env.temperature), float(env.salinity),
                           float(env.pH), float(waterdepth / 2))
 
@@ -135,8 +158,8 @@ function _make_problem(pm::KrakenJL, tx, maxr)
     cn = Complex{T}[]
     if is_constant(ssp)
         c = float(value(ssp))
-        zn = [0.0, waterdepth]
-        cn = [crci(c, 0.0, f; volume=fg) for _ in 1:2]
+        zn = [zero(T), waterdepth]
+        cn = Complex{T}[crci(c, 0.0, f; volume=fg) for _ in 1:2]
     elseif ssp isa SampledFieldZ
         zrange = sort!(vcat(collect(ssp.zrange), -waterdepth); rev=true)
         for z in zrange
@@ -145,7 +168,8 @@ function _make_problem(pm::KrakenJL, tx, maxr)
             z == -waterdepth && break
         end
     else
-        for d in range(0.0, waterdepth; length=_kj_recommend_len(waterdepth, f))
+        for d in range(zero(T), waterdepth;
+                       length=_kj_recommend_len(_value(waterdepth), _value(f)))
             push!(zn, d)
             push!(cn, crci(float(ssp(-d)), 0.0, f; volume=fg))
         end
@@ -155,7 +179,7 @@ function _make_problem(pm::KrakenJL, tx, maxr)
         end
     end
     λ = maximum(ssp) / f
-    ng_water = round(Int, waterdepth / λ * pm.mesh_density)
+    ng_water = round(Int, _value(waterdepth / λ) * pm.mesh_density)
     push!(media, Medium{T}(0.0, waterdepth, zn, cn, zeros(Complex{T}, length(zn)),
                            ones(T, length(zn)), spline, ng_water))
 
@@ -169,7 +193,7 @@ function _make_problem(pm::KrakenJL, tx, maxr)
             cₛ₁, cₛ₂ = float(first(l.cₛ)), float(last(l.cₛ))
             λₗ = max(cₚ₁, cₛ₁, cₚ₂, cₛ₂) / f
             # Kraken manual recommends double mesh density for elastic media
-            ngl = round(Int, 2 * l.h / λₗ * pm.mesh_density)
+            ngl = round(Int, _value(2 * l.h / λₗ) * pm.mesh_density)
             push!(media, Medium{T}(depth, depth + l.h,
                 [depth, depth + l.h],
                 [crci(cₚ₁, in_dBperλ(l.δₚ), f; volume=fg),
@@ -184,13 +208,13 @@ function _make_problem(pm::KrakenJL, tx, maxr)
         seabed = ElasticBoundary(l.ρ, l.cₚ, l.cₛ, l.δₚ, l.δₛ)
     end
 
-    hstop = _kj_halfspace(env.surface, f, fg)
-    hsbot = _kj_halfspace(seabed, f, fg)
+    hstop = _kj_halfspace(T, env.surface, f, fg)
+    hsbot = _kj_halfspace(T, seabed, f, fg)
     push!(sigma, float(seabed === RigidBoundary || seabed === PressureReleaseBoundary ?
                        0.0 : seabed.σ))
 
-    rmax = isinf(pm.rmax) ? 1.01 * maxr : pm.rmax
-    prob = Problem{T}(f, media, sigma, hstop, hsbot, pm.clow, pm.chigh,
+    rmax = isinf(pm.rmax) ? T(1.01) * T(maxr) : T(pm.rmax)
+    prob = Problem{T}(T(f), media, sigma, hstop, hsbot, T(pm.clow), T(pm.chigh),
                       rmax / 1000)      # rmax in km, as read from the env file
 
     # base mesh counts (NG); 0 → auto rule of ReadEnvironmentMod.f90
@@ -222,14 +246,15 @@ function UnderwaterAcoustics.arrivals(pm::KrakenJL, tx1::AbstractAcousticSource,
     else
         max_c = 2 * max(max_c, maximum(pm.env.seabed.c))
     end
-    v = all(vi -> 0 ≤ vi ≤ max_c, res.vg) ? Vector{Union{Missing,Float64}}(res.vg) :
-        Vector{Union{Missing,Float64}}(fill(missing, length(res.k)))
+    T = real(eltype(res.k))
+    v = all(vi -> 0 ≤ vi ≤ max_c, res.vg) ? Vector{Union{Missing,T}}(res.vg) :
+        Vector{Union{Missing,T}}(fill(missing, length(res.k)))
 
     map(1:min(length(res.k), pm.nmodes)) do i
         # mode shapes on the solver's own mesh (finer than the wrapper's λ/10
         # resampling — see PORTING_NOTES §3)
         ψ = SampledField(res.phi[:, i]; z=-res.z)
-        ModeArrival{ComplexF64,typeof(ψ),Union{Missing,Float64},Float64}(
+        ModeArrival{Complex{T},typeof(ψ),Union{Missing,T},T}(
             i, res.k[i], ψ, v[i], ω / real(res.k[i]))
     end
 end

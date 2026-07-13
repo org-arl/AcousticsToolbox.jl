@@ -13,13 +13,8 @@ Linear-interpolation indices and weights of `ztab` into the (ascending) grid
 """
 function weight(z::AbstractVector, ztab::AbstractVector)
     n = length(z)
-    iz = similar(ztab, Int)
-    w = similar(ztab, Float64)
-    for (k, zt) in pairs(ztab)
-        i = clamp(searchsortedlast(z, zt), 1, n - 1)
-        iz[k] = i
-        w[k] = (zt - z[i]) / (z[i+1] - z[i])
-    end
+    iz = [clamp(searchsortedlast(z, zt), 1, n - 1) for zt in ztab]
+    w = [(ztab[k] - z[iz[k]]) / (z[iz[k]+1] - z[iz[k]]) for k in eachindex(iz)]
     iz, w
 end
 
@@ -27,7 +22,8 @@ end
 function tabulate_modes(res::ModeResult{T}, ztab::AbstractVector) where {T}
     iz, wts = weight(res.z, ztab)
     M = length(res.k)
-    phitab = Matrix{Complex{T}}(undef, length(ztab), M)
+    TT = promote_type(T, typeof(float(one(eltype(ztab)))))
+    phitab = Matrix{Complex{TT}}(undef, length(ztab), M)
     for m in 1:M, (k, i) in pairs(iz)
         phitab[k, m] = res.phi[i, m] + wts[k] * (res.phi[i+1, m] - res.phi[i, m])
     end
@@ -45,9 +41,11 @@ mode values at the receiver depths, `rxr` the receiver ranges [m].
 Range columns are independent, so they are chunked across threads (each
 column written by exactly one task — deterministic).
 """
-function evaluate_field(k::Vector{Complex{T}}, phiS::Vector{Complex{T}},
-                        phiR::Matrix{Complex{T}}, rxr::AbstractVector;
-                        incoherent::Bool=false, threads::Int=1) where {T}
+function evaluate_field(k::Vector{<:Complex}, phiS::Vector{<:Complex},
+                        phiR::Matrix{<:Complex}, rxr::AbstractVector;
+                        incoherent::Bool=false, threads::Int=1)
+    T = promote_type(real(eltype(k)), real(eltype(phiS)), real(eltype(phiR)),
+                     typeof(float(one(eltype(rxr)))))
     M = length(k)
     nz = size(phiR, 1)
     nr = length(rxr)
@@ -79,7 +77,7 @@ function evaluate_field(k::Vector{Complex{T}}, phiS::Vector{Complex{T}},
                 s = sqrt(s)
             end
             # cylindrical spreading (Option 'R')
-            P[iz, ir] = abs(r) > floatmin(T) ? s / sqrt(r) : s
+            P[iz, ir] = abs(_value(r)) > floatmin(_valuetype(T)) ? s / sqrt(r) : s
         end
     end
 
