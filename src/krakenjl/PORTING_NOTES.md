@@ -88,9 +88,18 @@ coupled modes, twersky scatter, biological attenuation.
 - **Errors instead of dummy mode files** — "No modes for given phase speed
   interval" raises a Julia error (the Fortran writes a dummy MODFile for
   FIELD3D and calls ERROUT).
-- **ForwardDiff** — not supported in this initial port (the eigenvalue
-  search is not dual-safe); use the fallback `FiniteDifferences` route if
-  gradients are needed.
+- **ForwardDiff support via implicit-function correction** (`dual.jl`) —
+  the eigenvalue search (secant/Brent/bisection with deflation and restarts)
+  runs on ForwardDiff *values* only; each converged eigenvalue is then made
+  dual-exact with a single Newton step of the undeflated characteristic
+  function in dual arithmetic (∂Δ/∂x by the same central-difference device
+  `Normalize` uses for admittance derivatives). Richardson extrapolation,
+  inverse iteration, normalization, perturbations and the mode summation are
+  re-run in dual arithmetic. Discrete quantities (mode count, mesh counts,
+  turning-point index) are frozen at their value-space results; gradients are
+  one-sided at model kinks (receiver depth exactly on a mesh node, integer
+  water depth toggling the extra-SSP-node branch). Verified against central
+  differences to ~1e-5 relative at generic parameter values.
 
 ## 4. Validation provenance
 

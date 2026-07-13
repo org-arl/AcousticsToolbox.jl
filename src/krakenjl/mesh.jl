@@ -208,8 +208,8 @@ Auto mesh count for a medium (ports the NG == 0 rule of ReadEnvironmentMod:
 20 points per wavelength at the last-read speed of the medium, min 10).
 """
 function auto_ng(med::Medium{T}, freq) where {T}
-    c = real(med.cpn[end])
-    iszero(med.csn[end]) || (c = real(med.csn[end]))
-    deltaz = c / freq / 20
-    max(floor(Int, (med.z1 - med.z0) / deltaz), 10)
+    c = _value(real(med.cpn[end]))
+    iszero(med.csn[end]) || (c = _value(real(med.csn[end])))
+    deltaz = c / _value(freq) / 20
+    max(floor(Int, _value(med.z1 - med.z0) / deltaz), 10)
 end

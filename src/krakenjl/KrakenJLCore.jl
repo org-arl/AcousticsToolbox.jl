@@ -18,6 +18,7 @@ using LinearAlgebra
 
 include("attenuation.jl")
 include("types.jl")
+include("dual.jl")
 include("mesh.jl")
 include("bcimp.jl")
 include("solve.jl")

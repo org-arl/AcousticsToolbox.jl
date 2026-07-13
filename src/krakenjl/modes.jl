@@ -26,7 +26,7 @@ function inverse_iteration!(phi::Vector{X}, d::Vector{X}, e::Vector{X}) where {X
             sum(j -> abs(real(e[j])) + abs(imag(e[j])), 2:n)
 
     # factor of 100: some Scholte modes weren't getting amplified enough (mbp 8/2010)
-    eps3 = 100 * eps(typeof(norm_)) * norm_
+    eps3 = 100 * eps(_valuetype(typeof(norm_))) * norm_
     uk = real(n)
     eps4 = uk * eps3
     uk = eps4 / sqrt(uk)
