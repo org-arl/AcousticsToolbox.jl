@@ -21,4 +21,11 @@ include("bellhopjl/BellhopJLCore.jl")
 using .BellhopJLCore: BellhopJL
 export BellhopJL
 
+# KrakenJL (native Julia port of Kraken/KrakenC) lives in an internal
+# submodule; like src/bellhopjl/**, src/krakenjl/** is GPL-3.0-or-later
+# (see LICENSE-GPL-3.0), unlike the rest of this package (MIT)
+include("krakenjl/KrakenJLCore.jl")
+using .KrakenJLCore: KrakenJL
+export KrakenJL
+
 end # module
