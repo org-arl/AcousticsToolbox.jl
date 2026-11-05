@@ -1,6 +1,6 @@
 name = "AcousticsToolbox"
 uuid = "268a15bc-5756-47d6-9bea-fa5dc21c97f8"
-version = "0.8.0"
+version = "0.8.1"
 authors = ["Mandar Chitre <mandar@nus.edu.sg>"]
 
 [deps]
@@ -17,5 +17,5 @@ ForwardDiff = "0.10, 1"
 LinearAlgebra = "1"
 Printf = "1"
 StaticArrays = "1"
-UnderwaterAcoustics = "0.6,0.7,0.8"
+UnderwaterAcoustics = "0.6,0.7,0.8,0.9"
 julia = "1.9"
